@@ -1,0 +1,1 @@
+{ "name": "jzs-site", "private": true, "scripts": { "build": "node tools/build.js", "check": "node tools/check.js" }, "devDependencies": { "puppeteer": "^22.0.0" } }

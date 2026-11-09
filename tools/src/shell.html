@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b5aa2">
+<title>中外建史横向对比背诵站</title>
+<style>/*CSS*/</style>
+</head>
+<body>
+<a class="skip" href="#view">跳到正文</a>
+<header class="top">
+  <a class="brand" href="#/"><span class="brand-b">建</span><span class="brand-t">中外建史<small>横向对比</small></span></a>
+  <nav class="topnav" aria-label="主导航">
+    <a href="#/">首页</a><a href="#/timeline">时间轴</a><a href="#/t/wj01/graph">关系图</a><a href="#/quiz">自测</a><a href="#/issues">勘误</a>
+  </nav>
+  <form id="gsearch" class="gsearch" role="search"><input type="search" placeholder="搜索人名/作品/术语" aria-label="全站搜索"></form>
+  <button class="btn tbtn" data-act="mask" title="背诵模式（快捷键 M）">背诵</button>
+</header>
+<div id="maskbar" class="maskbar" hidden>
+  <b>背诵模式</b><span class="muted">遮挡：</span>
+  <button class="chip" data-cat="t">名词</button><button class="chip" data-cat="w">作品</button><button class="chip" data-cat="n">年代/数字</button>
+  <span id="mk-count" class="muted"></span>
+  <span class="mb-r"><button class="btn sm" data-act="revall">全部揭开</button><button class="btn sm" data-act="rehide">重新遮住</button><button class="btn sm" data-act="mask">退出</button></span>
+  <span class="muted small mb-tip">点灰条揭开，再点遮回；矩阵表头「遮」可挡整列。</span>
+</div>
+<main id="view" tabindex="-1"></main>
+<aside id="viewer" aria-label="原表格长图"></aside>
+<button id="fab" class="fab" data-act="viewer" hidden title="原图对照（快捷键 O）">原图<br>对照</button>
+<script>/*JS*/</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+const fs = require('fs'), path = require('path');
+const S = f => fs.readFileSync(path.join(__dirname, 'src', f), 'utf8');
+const site = path.join(__dirname, '..');
+const manifest = fs.readFileSync(path.join(site, 'img', 'manifest.json'), 'utf8');
+const js = ['data_meta.js', 'core.js', 'topics_zj.js', 'topics_wj_a.js', 'topics_wj_b.js', 'app.js'].map(f => `// ---- ${f} ----\n` + S(f)).join('\n');
+const all = `"use strict";\nconst MANIFEST = ${manifest};\n${js}`;
+fs.writeFileSync(path.join(__dirname, 'bundle.js'), all);
+let html = S('shell.html').replace('/*CSS*/', () => S('style.css')).replace('/*JS*/', () => all.replace(/<\/script/gi, '<\\/script'));
+fs.writeFileSync(path.join(site, 'index.html'), html);
+console.log('built', (html.length / 1024).toFixed(0) + 'KB');
