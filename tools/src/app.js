@@ -68,7 +68,7 @@ function topicPage(id) {
     <header class="tp-head"><div class="crumb"><a href="#/">首页</a> / ${ZONE[t.zone]} / 第 ${idx + 1} 位</div>
      <div class="tp-tt"><span class="val val-${VAL_ORDER[t.value]}">价值 ${t.value}</span><h1>${esc(ZONE[t.zone])} ${t.no}｜${esc(t.title)}</h1></div>
      <p class="tc-r">${esc(t.reason)}</p>
-     <div class="tp-act"><button class="btn pri" data-act="viewer">原表格长图对照</button><button class="btn" data-act="mask">背诵模式</button><a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener">小红书原帖 ↗</a></div></header>
+     <div class="tp-act"><button class="btn pri" data-act="viewer">原表格长图对照</button><button class="btn" data-act="mask">背诵模式</button></div></header>
     <nav class="toc" aria-label="本页目录"></nav><div class="tp-body">${body}</div>
     <div class="pn">${prev ? `<a href="#/t/${prev.id}">← ${esc(prev.title)}</a>` : '<span></span>'}${next ? `<a href="#/t/${next.id}">${esc(next.title)} →</a>` : ''}</div></div></div>`;
 }
