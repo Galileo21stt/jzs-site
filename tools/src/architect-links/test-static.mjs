@@ -14,7 +14,7 @@ function check(name, cond, extra) {
   }
 }
 
-for (const file of ["data.js", "app.js"]) {
+for (const file of ["data.js", "layout.js", "interaction.js", "app.js"]) {
   execFileSync("node", ["--check", path.join(__dirname, file)], { stdio: "pipe" });
   check("syntax " + file, true);
 }
@@ -71,6 +71,9 @@ check("leaf type is at least 14px", /leaf-label[\s\S]{0,80}font-size:\s*14px/.te
 check("era type is at least 15px", /era-label[\s\S]{0,80}font-size:\s*15px/.test(css));
 check("tree page uses a node card instead of a docked inspector", app.includes("function showNodeCard") && app.includes("node-card") && !app.includes('class="inspector"'));
 check("flowers keep accessible names", app.includes("aria-label") && app.includes("作品 "));
+check("tree page has no 目录 FAB", !app.includes("tree-fab") && !app.includes("目录") && !css.includes(".tree-fab"));
+check("flower markup no longer carries data-person", !/flower-node[\s\S]{0,200}data-person=/.test(app));
+check("index loads interaction.js", html.includes('src="interaction.js"'));
 
 const workCount = people.reduce((n, p) => n + (p.works || []).length, 0);
 check("at least 30 works remain attached to people", workCount >= 30, workCount);
