@@ -291,7 +291,15 @@
     return personCardHtml(sel.id);
   }
 
+  const nodeCardPositions = new Map();
+  let nodeCardActiveKey = null;
+  function rememberNodeCardPosition() {
+    const card = $("#nodeCard");
+    if (card && nodeCardActiveKey) nodeCardPositions.set(nodeCardActiveKey, card.scrollTop || 0);
+  }
   function hideNodeCard() {
+    rememberNodeCardPosition();
+    nodeCardActiveKey = null;
     treeSel = null;
     const card = $("#nodeCard");
     if (card) {
@@ -344,10 +352,14 @@
       card.innerHTML = "";
       return;
     }
+    rememberNodeCardPosition();
+    nodeCardActiveKey = treeSel.kind + ":" + treeSel.id;
     card.hidden = false;
     card.innerHTML = nodeCardHtml(treeSel) +
       '<button type="button" class="node-card-close" data-close-card="1" aria-label="关闭">关闭</button>';
     positionNodeCard();
+    card.scrollTop = nodeCardPositions.get(nodeCardActiveKey) || 0;
+    card.onscroll = rememberNodeCardPosition;
   }
 
   function applyTreeHighlight() {
@@ -715,6 +727,8 @@
     else if (route.view === "graph") html = graphPage();
     else if (route.view === "progress") html = progressPage();
     else html = treePage();
+    rememberNodeCardPosition();
+    nodeCardActiveKey = null;
     main.innerHTML = html;
     syncChrome();
     if (route.view === "tree") {
