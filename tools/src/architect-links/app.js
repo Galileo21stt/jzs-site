@@ -162,6 +162,7 @@
   }
 
   let lastLayout = null;
+  let treeZoom = 1, zoomControl = null;
 
   function layoutApi() {
     return window.ArchitectTreeLayout;
@@ -177,6 +178,7 @@
 
   function renderTreeSvg(layout) {
     const { width, height, trunkX, people, eras, works, years, dirTop, dirBot } = layout;
+    const eraColors=Object.fromEntries(Object.keys(MOVEMENTS).map((name,i)=>[name,"hsl("+((i*137.508)%360).toFixed(1)+", 62%, 32%)"]));
     const padX = (layout.constants && layout.constants.TEXT_PAD_X) || 6;
     const padY = (layout.constants && layout.constants.TEXT_PAD_Y) || 3;
 
@@ -188,7 +190,7 @@
     }
 
     const lines = (layout.lineSegments || []).map((s) =>
-      '<line class="' + lineClass(s.kind) + '" x1="' + s.x1.toFixed(1) + '" y1="' + s.y1.toFixed(1) + '" x2="' + s.x2.toFixed(1) + '" y2="' + s.y2.toFixed(1) + '"/>'
+      '<line data-era="'+esc(s.era || '')+'" style="--branch-color:'+esc(eraColors[s.era] || '#141414')+'" class="' + lineClass(s.kind) + '" x1="' + s.x1.toFixed(1) + '" y1="' + s.y1.toFixed(1) + '" x2="' + s.x2.toFixed(1) + '" y2="' + s.y2.toFixed(1) + '"/>'
     ).join("");
 
     function labelBg(x, y, w, h) {
@@ -209,7 +211,7 @@
     const eraLabels = eras.map((e) => {
       const boxX = e.labelAnchor === "end" ? e.labelX - e.labelW : e.labelX;
       const baseline = e.baseline != null ? e.baseline : (e.labelY + 14);
-      return '<g class="era-hit dimmable" tabindex="0" role="button" data-kind="era" data-id="' + esc(e.name) + '" aria-label="思潮 ' + esc(e.name) + '">' +
+      return '<g style="--branch-color:'+esc(eraColors[e.name])+'" class="era-hit dimmable" tabindex="0" role="button" data-kind="era" data-id="' + esc(e.name) + '" aria-label="思潮 ' + esc(e.name) + '">' +
         labelBg(boxX, e.labelY, e.labelW, e.labelH) +
         '<text class="era-label" text-anchor="' + e.labelAnchor + '" x="' + e.labelX + '" y="' + baseline.toFixed(1) + '">' + esc(e.name) + "</text></g>";
     }).join("");
@@ -217,9 +219,9 @@
     const leaves = people.map((item) => {
       const x = item.x - item.w / 2;
       const y = item.y - item.h / 2;
-      return '<g class="leaf-node dimmable" tabindex="0" role="button" data-kind="person" data-id="' + esc(item.p.id) + '" aria-label="人物 ' + esc(item.p.name) + '">' +
+      return '<g style="--branch-color:'+esc(eraColors[item.p.era])+'" class="leaf-node dimmable" tabindex="0" role="button" data-kind="person" data-id="' + esc(item.p.id) + '" aria-label="人物 ' + esc(item.p.name) + '">' +
         '<rect class="leaf-bg" x="' + x + '" y="' + y + '" width="' + item.w + '" height="' + item.h + '" rx="8"/>' +
-        '<text class="leaf-label" text-anchor="middle" x="' + item.x + '" y="' + (item.y + 5) + '">' + esc(item.p.shortName || item.p.name) + "</text></g>";
+        '<text class="leaf-label" text-anchor="middle" x="' + item.x + '" y="' + (item.y - 3) + '">' + esc(item.p.shortName || item.p.name) + '</text><text class="leaf-era" text-anchor="middle" x="' + item.x + '" y="' + (item.y + 16) + '">' + esc(item.p.era) + "</text></g>";
     }).join("");
 
     const flowerEls = works.map((w) => {
@@ -378,6 +380,9 @@
       });
     }
     if (sel) {
+      const selectedPerson=sel.kind==="person"?peopleById[sel.id]:sel.kind==="work"?peopleById[sel.id.split("::")[0]]:null;
+      const selectedEra=sel.kind==="era"?sel.id:selectedPerson && selectedPerson.era;
+      $$("#treeSvg [data-era]").forEach(el=>{if(el.getAttribute("data-era")===selectedEra)markMatch(el);});
       $$("#treeSvg [data-kind]").forEach((el) => {
         if (el.getAttribute("data-kind") === sel.kind && el.getAttribute("data-id") === sel.id) {
           el.classList.add("is-active", "is-match");
@@ -406,9 +411,9 @@
   function scrollTreeToYear(year, frac) {
     const st = $("#treeStage");
     if (!st || !lastLayout) return;
-    const y = lastLayout.yearToY(year);
+    const y = lastLayout.yearToY(year) * treeZoom;
     st.scrollTop = Math.max(0, y - st.clientHeight * (frac == null ? 0.42 : frac));
-    st.scrollLeft = Math.max(0, lastLayout.trunkX - st.clientWidth / 2);
+    st.scrollLeft = Math.max(0, lastLayout.trunkX * treeZoom - st.clientWidth / 2);
   }
 
   function treePage() {
@@ -418,10 +423,11 @@
     lastLayout = layout;
     return '<div class="tree-page">' +
       '<div class="tree-tools"><strong>建筑史时间树</strong><button type="button" data-view="movements">流派</button><button type="button" data-view="cards">查人物·作品</button><button type="button" data-view="drill">练关系</button><label><span class="visually-hidden">时间树范围</span><select id="treeGroup">' + ['全部'].concat(GROUP_ORDER).map(g=>'<option'+(g===treeGroup?' selected':'')+'>'+esc(g)+'</option>').join('')+'</select></label><label><span class="visually-hidden">跳到年代</span><select id="yearJump"><option value="">跳到年代</option>'+[1780,1830,1870,1900,1920,1950,1980,2000].map(y=>'<option>'+y+'</option>').join('')+'</select></label></div>' +
-      '<div class="tree-guide">时间自下而上 · 枝：思潮 · 叶：人物 · 花：作品<br>人物按所列活动及作品区间定位；花随人物排列，点开查看精确年代。可双向滑动画布。</div>' +
+      '<div class="tree-guide">时间自下而上 · 枝：思潮 · 叶：人物 · 花：作品<br>人物按所列活动及作品区间定位；花随人物排列，点开查看精确年代。同色枝线与人物属于同一主线；点思潮突出整枝。单指滑动，双指缩放。</div>' +
       '<div class="tree-stage" id="treeStage">' +
         '<div class="tree-canvas" id="treeCanvas">' + renderTreeSvg(layout) + "</div>" +
       "</div>" +
+      '<div class="zoom-tools" role="group" aria-label="画布缩放"><button type="button" data-zoom="out" aria-label="缩小时间树">−</button><button type="button" data-zoom="reset" id="zoomValue" aria-label="恢复原始大小">100%</button><button type="button" data-zoom="in" aria-label="放大时间树">＋</button></div>' +
       '<aside class="node-card" id="nodeCard" hidden role="dialog" aria-label="节点说明"></aside>' +
     "</div>";
   }
@@ -715,6 +721,7 @@
       applyTreeHighlight();
       const st = $("#treeStage");
       if (st) {
+        zoomControl=window.ArchitectTreeZoom.bind(st,$("#treeSvg"),{scale:treeZoom,onStart:hideNodeCard,onChange:(value)=>{treeZoom=value;const v=$("#zoomValue");if(v)v.textContent=Math.round(value*100)+"%";}});
         if (treeScroll != null && didInitialTreeScroll) {
           st.scrollTop = treeScroll.top;
           st.scrollLeft = treeScroll.left;
@@ -763,6 +770,7 @@
     const intent = window.ArchitectTreeInteraction
       ? window.ArchitectTreeInteraction.interactionFromElement(target, e)
       : null;
+    if (act.dataset && act.dataset.zoom && zoomControl) { hideNodeCard();zoomControl.change(act.dataset.zoom==="reset"?1:treeZoom*(act.dataset.zoom==="in"?1.25:.8));return; }
     if (act.id === "exportBtn") { download(); return; }
     if (act.id === "importBtn") { $("#fileImport").click(); return; }
     if (act.id === "resetBtn") {

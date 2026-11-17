@@ -7,7 +7,7 @@
   var ERA_FONT = 15;
   var LEAF_FONT = 14;
   var YEAR_FONT = 13;
-  var LEAF_H = 36;
+  var LEAF_H = 54;
   var LEAF_PAD_X = 16;
   var MIN_LEAF_W = 92;
   var GUTTER = 52;
@@ -507,7 +507,7 @@
         span: span,
         side: side,
         y: yearToY(span.mid),
-        w: leafWidth(p.shortName || p.name),
+        w: Math.max(leafWidth(p.shortName || p.name), Math.ceil(estimateTextWidth(p.era, 11)+32)),
         h: LEAF_H
       };
     });
