@@ -205,7 +205,7 @@ h3 { font-size: 16px; margin: 0 0 8px; }
 }
 .tree-canvas {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   width: max-content;
   min-width: 100%;
   padding: 0;
@@ -411,3 +411,17 @@ h3 { font-size: 16px; margin: 0 0 8px; }
 @media (prefers-reduced-motion: no-preference) {
   #toast { transition: opacity 160ms ease, transform 160ms ease; }
 }
+
+/* Only the canvas handles pinch; page/browser zoom remains available elsewhere. */
+.tree-stage { touch-action: pan-x pan-y; }
+.zoom-tools { position:fixed;right:12px;bottom:calc(100px + env(safe-area-inset-bottom));z-index:22;display:flex;background:var(--paper);border:1px solid var(--line-soft);border-radius:10px;box-shadow:var(--shadow); }
+.zoom-tools button { min-width:44px;min-height:44px;font-size:18px; }
+.zoom-tools #zoomValue { font-size:13px;min-width:58px; }
+.zoom-tools button:focus-visible { outline:2px solid var(--accent); }
+
+.tree-svg .branch { stroke:var(--branch-color);stroke-width:2.2; }
+.tree-svg .era-hit .label-bg { fill:var(--paper);stroke:var(--branch-color);stroke-width:1.5;rx:5; }
+.tree-svg .era-hit .era-label { fill:var(--branch-color);font-weight:700; }
+.tree-svg .leaf-bg { stroke:var(--branch-color);stroke-width:1.7; }
+.tree-svg .leaf-era { font-size:11px;fill:var(--branch-color); }
+.tree-svg.is-filtering .branch.is-match { stroke-width:3.2; }
