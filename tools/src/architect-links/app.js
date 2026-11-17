@@ -7,8 +7,12 @@
   const COMPARE_PAIRS = window.COMPARE_PAIRS || [];
   const KEY = "arch-links-v1";
   const VALID_RATES = ["again", "hard", "good"];
-  const YEAR_MIN = 1850;
+  const YEAR_MIN = 1750;
   const YEAR_MAX = 2016;
+  const MOVEMENTS = window.MOVEMENTS || {};
+  const QUESTIONS = window.ArchitectStudy.buildQuestions(PEOPLE);
+  let treeGroup = "全部";
+  let drillMode = "example", drillQueue = [], drillIdx = 0, drillReveal = false;
   const peopleById = Object.fromEntries(PEOPLE.map((p) => [p.id, p]));
 
   const $ = (sel, root) => (root || document).querySelector(sel);
@@ -114,7 +118,7 @@
   function personMatches(p, q) {
     if (!q) return true;
     const blob = [
-      p.name, p.en, p.era, p.group, p.year, p.idea, p.method, p.question, p.answer, p.trap,
+      p.name, p.en, p.era, p.group, p.year, p.idea, p.method, p.question, p.answer, p.trap, (p.affiliations || []).join(" "), MOVEMENTS[p.era] && MOVEMENTS[p.era].claim,
       (p.tags || []).join(" "),
       (p.works || []).map((w) => w.join(" ")).join(" "),
       (p.relate || []).map((r) => label(r[0]) + " " + r[1]).join(" ")
@@ -124,8 +128,8 @@
   function filteredPeople() {
     const q = search.trim().toLowerCase();
     return PEOPLE.filter((p) => {
-      if (filter === "本次错题" && !p.seed) return false;
-      if (filter !== "全部" && filter !== "本次错题" && p.group !== filter && p.era !== filter && !(p.tags || []).includes(filter)) return false;
+      if (filter === "首版关联" && !p.seed) return false;
+      if (filter !== "全部" && filter !== "首版关联" && p.group !== filter && p.era !== filter && !(p.tags || []).includes(filter) && !(p.affiliations || []).includes(filter)) return false;
       return personMatches(p, q);
     });
   }
@@ -134,7 +138,7 @@
     const h = decodeURIComponent(location.hash.slice(1));
     if (h.startsWith("person/")) return { view: "person", id: h.slice(7) };
     if (h === "home" || h === "" || h === "tree") return { view: "tree" };
-    if (["cards", "quiz", "graph", "progress"].includes(h)) return { view: h };
+    if (["cards", "quiz", "graph", "progress", "movements", "drill"].includes(h)) return { view: h };
     return { view: "tree" };
   }
   function setView(view) {
@@ -147,7 +151,7 @@
   }
 
   function badges(p) {
-    const tags = [p.era].concat(p.tags || []);
+    const tags = [p.era].concat(p.affiliations || [], p.tags || []);
     const uniq = [];
     tags.forEach((t) => { if (t && !uniq.includes(t)) uniq.push(t); });
     return uniq.map((t) => "<span>" + esc(t) + "</span>").join("");
@@ -213,9 +217,9 @@
     const leaves = people.map((item) => {
       const x = item.x - item.w / 2;
       const y = item.y - item.h / 2;
-      return '<g class="leaf-node dimmable" tabindex="0" role="button" data-kind="person" data-id="' + esc(item.p.id) + '" aria-label="建筑师 ' + esc(item.p.name) + '">' +
+      return '<g class="leaf-node dimmable" tabindex="0" role="button" data-kind="person" data-id="' + esc(item.p.id) + '" aria-label="人物 ' + esc(item.p.name) + '">' +
         '<rect class="leaf-bg" x="' + x + '" y="' + y + '" width="' + item.w + '" height="' + item.h + '" rx="8"/>' +
-        '<text class="leaf-label" text-anchor="middle" x="' + item.x + '" y="' + (item.y + 5) + '">' + esc(item.p.name) + "</text></g>";
+        '<text class="leaf-label" text-anchor="middle" x="' + item.x + '" y="' + (item.y + 5) + '">' + esc(item.p.shortName || item.p.name) + "</text></g>";
     }).join("");
 
     const flowerEls = works.map((w) => {
@@ -230,22 +234,17 @@
       "</svg>";
   }
 
+  function movementMembers(name) {
+    return PEOPLE.filter(p=>p.era===name || (p.affiliations || []).includes(name));
+  }
+  function movementBody(name) {
+    const m=MOVEMENTS[name];
+    if(!m) return '<p class="muted">这是一条人物思想线索，具体流派背景仍待补充。</p>';
+    return '<div class="english">'+esc(m.period)+'</div><h3>为什么出现</h3><p>'+esc(m.background)+'</p><h3>主张与建筑表现</h3><p>'+esc(m.claim)+'</p><h3>关系边界／易混点</h3><p>'+esc(m.boundary)+'</p><p class="faint">'+esc(m.sourceRef)+'</p>';
+  }
   function eraCardHtml(name) {
-    const members = PEOPLE.filter((p) => p.era === name);
-    if (!members.length) return "<p>未找到这条思潮。</p>";
-    const tokens = members.flatMap((p) => {
-      const s = personSpan(p);
-      return [[s.start, s.end]];
-    });
-    const span = spanOf(tokens);
-    const years = span ? Math.round(span.start) + "–" + Math.round(span.end) : "";
-    const list = members.map((p) =>
-      '<button type="button" class="relation" data-kind="person" data-id="' + esc(p.id) + '"><strong>' + esc(p.name) + "</strong><small>" + esc(p.year) + "</small></button>"
-    ).join("");
-    return '<div class="kicker">枝 · 思潮 / 流派</div><h2>' + esc(name) + "</h2>" +
-      '<div class="english">' + esc(years) + "</div>" +
-      "<p>这是一条思想或流派线索，不是唯一历史归属。下面是出现在这根枝上的建筑师。</p>" +
-      "<h3>建筑师</h3><div class=\"relate-list\">" + list + "</div>";
+    const list=movementMembers(name).map(p=>'<button type="button" class="relation" data-kind="person" data-id="'+esc(p.id)+'"><strong>'+esc(p.name)+'</strong><small>'+esc(p.year)+'</small></button>').join('');
+    return '<div class="kicker">枝 · 思潮 / 流派</div><h2>'+esc(name)+'</h2>'+movementBody(name)+'<h3>关联人物</h3><div class="relate-list">'+list+'</div>';
   }
 
   function workCardHtml(id) {
@@ -258,7 +257,8 @@
     return '<div class="kicker">花 · 作品</div><h2>' + esc(w[0]) + "</h2>" +
       '<div class="english">' + esc(w[1]) + "</div>" +
       "<p>" + esc(w[2]) + "</p>" +
-      '<p class="muted">所属建筑师：' + esc(p.name) + " · " + esc(p.era) + "</p>" +
+      '<p class="muted">关联人物：' + esc(p.name) + " · " + esc(p.era) + "</p>" +
+      '<p class="faint">' + esc(p.sourceRef || "首版学习卡；教材页码待定位") + "</p>" +
       '<div class="actions">' +
         '<button type="button" class="action-btn" data-kind="person" data-id="' + esc(p.id) + '">' + esc(p.name) + "</button>" +
       "</div>";
@@ -273,10 +273,11 @@
     const rel = (p.relate || []).map(([rid, why]) =>
       '<button type="button" class="relation" data-kind="person" data-id="' + esc(rid) + '"><strong>' + esc(label(rid)) + "</strong><small>" + esc(why) + "</small></button>"
     ).join("");
-    return '<div class="kicker">叶 · 建筑师</div><h2>' + esc(p.name) + "</h2>" +
+    return '<div class="kicker">叶 · 人物</div><h2>' + esc(p.name) + "</h2>" +
       '<div class="english">' + esc(p.en) + " · " + esc(p.year) + "</div>" +
       '<p class="muted">' + esc(p.era) + " · " + esc(p.group) + "</p>" +
-      "<p>" + esc(p.idea) + "</p>" +
+      "<p>" + esc(p.idea) + "</p><h3>怎么体现</h3><p>" + esc(p.method) + "</p>" +
+      '<p class="faint">易混：' + esc(p.trap) + '</p><p class="faint">' + esc(p.sourceRef || "首版学习卡；教材页码待定位") + "</p>" +
       (works ? "<h3>作品</h3><div class=\"works-list\">" + works + "</div>" : "") +
       (rel ? "<h3>横向关联</h3><div class=\"relate-list\">" + rel + "</div>" : "");
   }
@@ -412,9 +413,12 @@
 
   function treePage() {
     const viewW = Math.max(320, (document.getElementById("main") || document.body).clientWidth || window.innerWidth || 1024);
-    const layout = layoutApi().layoutTree(PEOPLE, { viewWidth: viewW });
+    const treePeople = treeGroup === "全部" ? PEOPLE : PEOPLE.filter(p=>p.group===treeGroup);
+    const layout = layoutApi().layoutTree(treePeople, { viewWidth: viewW, pxPerYear: 24 });
     lastLayout = layout;
     return '<div class="tree-page">' +
+      '<div class="tree-tools"><strong>建筑史时间树</strong><button type="button" data-view="movements">流派</button><button type="button" data-view="cards">查人物·作品</button><button type="button" data-view="drill">练关系</button><label><span class="visually-hidden">时间树范围</span><select id="treeGroup">' + ['全部'].concat(GROUP_ORDER).map(g=>'<option'+(g===treeGroup?' selected':'')+'>'+esc(g)+'</option>').join('')+'</select></label><label><span class="visually-hidden">跳到年代</span><select id="yearJump"><option value="">跳到年代</option>'+[1780,1830,1870,1900,1920,1950,1980,2000].map(y=>'<option>'+y+'</option>').join('')+'</select></label></div>' +
+      '<div class="tree-guide">时间自下而上 · 枝：思潮 · 叶：人物 · 花：作品<br>人物按所列活动及作品区间定位；花随人物排列，点开查看精确年代。可双向滑动画布。</div>' +
       '<div class="tree-stage" id="treeStage">' +
         '<div class="tree-canvas" id="treeCanvas">' + renderTreeSvg(layout) + "</div>" +
       "</div>" +
@@ -425,13 +429,13 @@
   function cardsPage() {
     const results = filteredPeople();
     const s = stats();
-    const groups = filter === "全部" || filter === "本次错题" ? GROUP_ORDER : [filter];
-    const chips = ["全部", "本次错题"].concat(GROUP_ORDER);
+    const groups = GROUP_ORDER.includes(filter) ? [filter] : GROUP_ORDER;
+    const chips = ["全部", "首版关联"].concat(GROUP_ORDER);
     return '<div class="page">' +
       '<div class="kicker">人物卡片库</div>' +
       "<h1>先看成一张卡片，再放回时间树。</h1>" +
       '<p class="lede">共 ' + s.total + " 人。检索与筛选和时间树共用；打开卡片可读思想、手法、作品和横向关联。</p>" +
-      '<div class="stats"><div class="stat"><strong>' + s.total + '</strong><span>建筑师</span></div><div class="stat"><strong>' + s.seed + '</strong><span>本次错题关联</span></div><div class="stat"><strong>' + s.reviewed + '</strong><span>已有自评</span></div><div class="stat"><strong>' + s.due + '</strong><span>今日待复测</span></div></div>' +
+      '<div class="stats"><div class="stat"><strong>' + s.total + '</strong><span>人物／组合</span></div><div class="stat"><strong>' + s.seed + '</strong><span>首版题型关联</span></div><div class="stat"><strong>' + s.reviewed + '</strong><span>已有自评</span></div><div class="stat"><strong>' + s.due + '</strong><span>今日待复测</span></div></div>' +
       '<div class="filterbar">' + chips.map((c) => '<button type="button" class="chip' + (filter === c ? " is-active" : "") + '" data-filter="' + esc(c) + '">' + esc(c) + "</button>").join("") + "</div>" +
       (results.length ? groups.map((g) => {
         const list = results.filter((p) => p.group === g);
@@ -452,13 +456,13 @@
     const r = store.reviews[p.id];
     const works = (p.works || []).map((w) => '<div class="work"><strong>' + esc(w[0]) + "</strong><small>" + esc(w[1]) + "</small><p>" + esc(w[2]) + "</p></div>").join("");
     const relations = (p.relate || []).map(([id, why]) => '<button class="relation" data-person="' + esc(id) + '"><strong>' + esc(label(id)) + "</strong><small>" + esc(why) + "</small></button>").join("");
-    const source = p.source
+    const source = p.sourceRef ? esc(p.sourceRef) + (p.source ? '<br><a class="linkish" target="_blank" rel="noopener noreferrer" href="' + esc(p.source) + '">外部参考资料 ↗</a>' : "") : p.source
       ? '<a class="linkish" target="_blank" rel="noopener noreferrer" href="' + esc(p.source) + '">外部参考资料 ↗</a>'
       : "补充学习卡，未做逐条教材定位";
     const rateText = r ? ("最近自评：" + (r.rate === "again" ? "不会" : r.rate === "hard" ? "模糊" : "会") + " · 下次 " + r.due) : "还没有复测记录";
     return '<div class="page">' +
       '<button type="button" class="back-link" data-view="tree">← 返回时间树</button> ' +
-      '<button type="button" class="back-link" data-view="cards">人物库</button>' +
+      '<button type="button" class="back-link" data-view="cards">人物库</button> <button type="button" class="back-link" data-locate="' + esc(p.id) + '">在时间树上定位</button>' +
       '<section class="detail-head"><div><div class="kicker">' + esc(p.group) + " / " + esc(p.year) + "</div>" +
       "<h1>" + esc(p.name) + '</h1><div class="english">' + esc(p.en) + '</div><div class="tag-list">' + badges(p) + "</div></div>" +
       '<div><button type="button" class="action-btn primary" data-start-one="' + esc(p.id) + '">闭卷测这个人物</button></div></section>' +
@@ -525,14 +529,14 @@
     if (!quizOrder.length) makeQuiz(quizMode);
     const s = stats();
     const p = peopleById[quizOrder[quizIdx]];
-    const tabs = [["seed", "本次 6 题"], ["due", "今日待复测 (" + s.due + ")"], ["all", "全部人物"]];
+    const tabs = [["seed", "首版 6 题"], ["due", "今日待复测 (" + s.due + ")"], ["all", "全部人物"]];
     return '<div class="page"><div class="kicker">闭卷复测</div>' +
       " <h1>闭卷，才能知道会不会。</h1>" +
       '<p class="lede">先独立写出要点，再揭晓参考答案。只有你自己点击“会 / 模糊 / 不会”后才记录复习状态。记录仍保存在本机，键名不变。</p>' +
       '<div class="filterbar">' + tabs.map(([id, name]) => '<button type="button" class="chip' + (quizMode === id ? " is-active" : "") + '" data-quiz-mode="' + id + '">' + name + "</button>").join("") + "</div>" +
       '<div class="quiz-layout"><section class="quiz-card">' +
       (p
-        ? '<div class="quiz-kicker">第 ' + (quizIdx + 1) + " / " + quizOrder.length + " 题 · " + (p.seed ? "本次错题关联" : "延伸复测") + "</div>" +
+        ? '<div class="quiz-kicker">第 ' + (quizIdx + 1) + " / " + quizOrder.length + " 题 · " + (p.seed ? "首版题型关联" : "延伸复测") + "</div>" +
           "<h2>" + esc(p.name) + '</h2><div class="english">' + esc(p.en) + "</div>" +
           '<div class="quiz-prompt">' + esc(p.question) + "</div>" +
           '<textarea id="quizDraft" class="answer-textarea" placeholder="先把脑海中的知识点写下来，别急着看答案…" aria-label="闭卷作答">' + esc(store.drafts[p.id] || "") + "</textarea>" +
@@ -547,7 +551,7 @@
                 '<button type="button" class="rate-btn" data-rate="good">会 · 7 天后</button>' +
               "</div>"
             : "")
-        : '<div class="empty">这组暂时没有到期内容。可以切到“本次 6 题”或“全部人物”。</div>') +
+        : '<div class="empty">这组暂时没有到期内容。可以切到“首版 6 题”或“全部人物”。</div>') +
       '</section><aside class="quiz-aside"><h3>复习规则</h3><p class="muted">不是机械地从第 1 题反复刷。全部人物优先安排你自评“不会、模糊”和已经到期的项目。</p>' +
       '<ol class="muted-list"><li>先闭卷输出</li><li>对照参考要点</li><li>自主评估</li><li>按 1 / 3 / 7 天复测</li></ol>' +
       '<div class="note">当前为单设备本地记录；换浏览器或清除站点数据前，先在“复习记录”导出备份。</div></aside></div></div>';
@@ -571,14 +575,47 @@
       ).join("") + "</div></div>";
   }
 
+  function movementsPage() {
+    const q=search.trim().toLowerCase();
+    const entries=Object.entries(MOVEMENTS).filter(([name,m])=>[name,m.period,m.background,m.claim,m.boundary,...movementMembers(name).map(p=>p.name)].join(' ').toLowerCase().includes(q));
+    return '<div class="page"><div class="kicker">时间 · 思想 · 人物 · 作品</div><h1>先认清每根枝，再联系叶与花。</h1><p class="lede">流派会并行、交叉，也会在同一个人身上转变。这里的时间是大致活跃范围；关联不等于师承，思想相近也不等于同一流派。</p><div class="study-summary"><strong>'+Object.keys(MOVEMENTS).length+' 条思想线索</strong><span>'+PEOPLE.length+' 组人物</span><span>'+PEOPLE.reduce((n,p)=>n+p.works.length,0)+' 项作品与著作</span><button class="linkish" data-view="drill">闭卷练关系 →</button></div><div class="movement-grid">'+entries.map(([name,m])=>'<details class="movement-card"><summary><span>'+esc(m.period)+'</span><strong>'+esc(name)+'</strong><small>'+movementMembers(name).map(p=>esc(p.name)).join(' · ')+'</small></summary><div class="movement-body">'+movementBody(name)+'<div class="group-chain">'+movementMembers(name).map(p=>'<button type="button" class="mini-node" data-person="'+p.id+'">'+esc(p.name)+'</button>').join('')+'</div>'+(PEOPLE.some(p=>p.era===name)?'<div class="actions"><button class="action-btn" data-branch="'+esc(name)+'">回时间树看这根枝</button></div>':'')+'</div></details>').join('')+'</div>'+(entries.length?'':'<p class="empty">没有匹配的流派；试试人物名或关键词。</p>')+'</div>';
+  }
+
+  function makeDrill() {
+    const reviews=store.relationReviews || {};
+    const candidates=QUESTIONS.filter(q=>drillMode==='due'?reviews[q.id] && reviews[q.id].due<=today():q.type===drillMode);
+    const score=q=>!reviews[q.id]?2:reviews[q.id].due<=today()?(reviews[q.id].rate==='again'?0:1):3;
+    drillQueue=candidates.map(q=>({q,tie:Math.random()})).sort((a,b)=>score(a.q)-score(b.q)||a.tie-b.tie).slice(0,10).map(x=>x.q);
+    drillIdx=0; drillReveal=false;
+  }
+  function recordDrill(rate) {
+    const q=drillQueue[drillIdx];
+    if(!drillReveal || !q || !VALID_RATES.includes(rate)) return;
+    store.relationReviews=store.relationReviews || {};
+    const prev=store.relationReviews[q.id];
+    store.relationReviews[q.id]={rate,last:today(),due:after(rate==='again'?1:rate==='hard'?3:7),tries:(prev && prev.tries || 0)+1};
+    save(); drillIdx++; drillReveal=false;
+    if(drillIdx>=drillQueue.length) { drillQueue=[]; toast('这一批已完成，已按待复测和未练内容重新编排'); }
+    render();
+  }
+  function drillPage() {
+    if(!drillQueue.length) makeDrill();
+    const q=drillQueue[drillIdx];
+    const due=Object.values(store.relationReviews||{}).filter(r=>r.due<=today()).length;
+    const tabs=[['example','图中同型题'],['work','作品 → 人物'],['person','人物 → 思潮'],['idea','思想 → 人物'],['time','时间排序'],['due','到期复测 ('+due+')']];
+    return '<div class="page"><div class="kicker">关系辨认 · 自拟练习</div><h1>把关系说出来。</h1><p class="lede">每批最多 10 题，先想再揭晓。不会／模糊／会分别在 1／3／7 天后复测。这里单独记录每条关系，不把一次练习算作掌握整个人物。</p><div class="filterbar">'+tabs.map(([id,name])=>'<button class="chip'+(drillMode===id?' is-active':'')+'" data-drill-mode="'+id+'">'+esc(name)+'</button>').join('')+'</div><section class="quiz-card relation-drill">'+(q?'<div class="quiz-kicker">'+(drillIdx+1)+' / '+drillQueue.length+' · '+esc(q.title)+'</div><h2 class="drill-prompt">'+esc(q.prompt)+'</h2><button class="action-btn primary" data-drill-reveal="1">'+(drillReveal?'收起答案':'我想好了，核对答案')+'</button>'+(drillReveal?'<div class="answer-box"><strong>参考关系</strong><p>'+esc(q.answer)+'</p><p class="muted">易混：'+esc(q.trap)+'</p><p class="faint">'+esc(q.sourceRef)+'</p>'+(q.personId?'<button class="linkish" data-person="'+q.personId+'">查看完整人物卡 →</button>':'')+'</div><div class="rating-row"><button class="rate-btn" data-drill-rate="again">不会 · 明天</button><button class="rate-btn" data-drill-rate="hard">模糊 · 3 天后</button><button class="rate-btn" data-drill-rate="good">会 · 7 天后</button></div>':''):'<p>暂时没有到期关系。可以切换题型开始新一批。</p>')+'</section><p class="faint">这些题由本站依据学习卡编写，不冒充所附试卷原题。自评仅保存在当前浏览器；可在复习记录中一并导出。</p></div>';
+  }
+
   function progressPage() {
     const s = stats();
     const rs = PEOPLE.filter((p) => store.reviews[p.id]).sort((a, b) => (store.reviews[a.id].due || "").localeCompare(store.reviews[b.id].due || ""));
     const due = rs.filter((p) => store.reviews[p.id].due <= today());
+    const relationRows=QUESTIONS.filter(q=>(store.relationReviews||{})[q.id]).sort((a,b)=>store.relationReviews[a.id].due.localeCompare(store.relationReviews[b.id].due));
+    const relationSummary='<section class="progress-panel" style="margin:16px 0"><h3>关系练习：'+relationRows.length+' 条已自评</h3><p class="muted">单独记录每一道关系题，不计作整个人物已掌握。</p>'+relationRows.slice(0,10).map(q=>{const r=store.relationReviews[q.id];return '<div class="row-item"><strong>'+esc(q.prompt.split('\n')[0])+'</strong><span class="faint">'+(r.rate==='again'?'不会':r.rate==='hard'?'模糊':'会')+' · 下次 '+esc(r.due)+'</span></div>';}).join('')+'<button class="action-btn" data-drill-mode="due">练到期关系</button></section>';
     return '<div class="page"><div class="kicker">复习记录</div><h1>复习记录</h1>' +
       '<p class="lede">只有完成闭卷练习并主动自评的卡片才计入记录。数据仅保存在当前设备的浏览器，与改版前使用同一存储键。</p>' +
       '<div class="stats"><div class="stat"><strong>' + s.reviewed + '</strong><span>已自评人物</span></div><div class="stat"><strong>' + s.again + '</strong><span>自评不会</span></div><div class="stat"><strong>' + s.hard + '</strong><span>自评模糊</span></div><div class="stat"><strong>' + s.due + '</strong><span>到期待复测</span></div></div>' +
-      '<div class="quiz-layout"><section class="progress-panel"><h3>到期队列</h3>' +
+      relationSummary + '<div class="quiz-layout"><section class="progress-panel"><h3>人物到期队列</h3>' +
       (due.length ? due.map((p) => {
         const r = store.reviews[p.id];
         return '<button type="button" class="row-item" data-start-one="' + p.id + '"><strong>' + esc(p.name) + "</strong><span class=\"faint\">" + esc(r.due) + " · 到期</span></button>";
@@ -589,7 +626,7 @@
         const r = store.reviews[p.id];
         const word = r.rate === "again" ? "不会" : r.rate === "hard" ? "模糊" : "会";
         return '<div class="row-item"><strong>' + esc(p.name) + '</strong><span class="faint">' + word + " · 下次 " + esc(r.due) + " · " + (r.tries || 1) + " 次</span></div>";
-      }).join("") : '<p class="muted">还没有自评记录。</p>') +
+      }).join("") : '<p class="muted">还没有人物自评记录。</p>') +
       '<div class="actions"><button type="button" class="action-btn" id="exportBtn">导出复习记录</button>' +
       '<button type="button" class="action-btn ghost" id="importBtn">导入记录</button>' +
       '<button type="button" class="back-link" id="resetBtn">清空本机复习记录</button></div>' +
@@ -597,7 +634,7 @@
   }
 
   function download() {
-    const payload = { format: "architect-links-review", version: 1, exported_at: new Date().toISOString(), reviews: store.reviews, drafts: store.drafts };
+    const payload = { format: "architect-links-review", version: 1, exported_at: new Date().toISOString(), reviews: store.reviews, drafts: store.drafts, relationReviews: store.relationReviews || {} };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -630,6 +667,13 @@
             if (peopleById[id] && typeof value === "string") store.drafts[id] = value;
           });
         }
+        if (x.relationReviews && typeof x.relationReviews === "object") {
+          store.relationReviews=store.relationReviews || {};
+          Object.entries(x.relationReviews).forEach(([id,r])=>{
+            if (!QUESTIONS.some(q=>q.id===id) || !VALID_RATES.includes(r.rate) || !/^\d{4}-\d{2}-\d{2}$/.test(r.due||"")) return;
+            if (!store.relationReviews[id] || String(r.last||"")>=String(store.relationReviews[id].last||"")) store.relationReviews[id]={rate:r.rate,last:r.last||r.due,due:r.due,tries:Math.max(1,Number(r.tries)||1)};
+          });
+        }
         save();
         render();
         toast("已导入 " + added + " 条复习记录");
@@ -656,7 +700,9 @@
     const stage = $("#treeStage");
     if (stage) treeScroll = { top: stage.scrollTop, left: stage.scrollLeft };
     let html;
-    if (route.view === "tree") html = treePage();
+    if (route.view === "movements") html = movementsPage();
+    else if (route.view === "drill") html = drillPage();
+    else if (route.view === "tree") html = treePage();
     else if (route.view === "cards") html = cardsPage();
     else if (route.view === "person") html = detailPage(peopleById[route.id]);
     else if (route.view === "quiz") html = quizPage();
@@ -735,6 +781,19 @@
       selectNode(intent.kind, intent.id);
       return;
     }
+    if (act.dataset.locate && peopleById[act.dataset.locate]) {
+      treeGroup=peopleById[act.dataset.locate].group; treeSel={kind:"person",id:act.dataset.locate}; treeScroll=null; didInitialTreeScroll=false; setView("tree"); return;
+    }
+    if (act.dataset.branch) {
+      const name=act.dataset.branch;
+      treeGroup="全部"; treeSel={kind:"era",id:name}; setView("tree");
+      const era=lastLayout && lastLayout.eras.find(x=>x.name===name);
+      if(era) { $("#treeStage").scrollTop=Math.max(0,era.midY-window.innerHeight/2); showNodeCard(); }
+      return;
+    }
+    if (act.dataset.drillMode) { drillMode=act.dataset.drillMode; drillQueue=[]; setView("drill"); return; }
+    if (act.dataset.drillReveal) { drillReveal=!drillReveal; render(); return; }
+    if (act.dataset.drillRate) { recordDrill(act.dataset.drillRate); return; }
     if (act.dataset.filter) { filter = act.dataset.filter; render(); return; }
     if (intent && intent.type === "goPerson") { goPerson(intent.id); return; }
     if (act.dataset.person && !act.dataset.kind) { goPerson(act.dataset.person); return; }
@@ -748,7 +807,7 @@
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "/" && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
-      if (current().view === "tree") return;
+      if (current().view === "tree") { setView("cards"); }
       e.preventDefault();
       const input = $("#searchInput");
       if (input) input.focus();
@@ -791,7 +850,8 @@
     if (e.target.id === "searchInput") {
       search = e.target.value;
       if (current().view === "tree") applyTreeHighlight();
-      else if (current().view === "cards") render();
+      else if (["cards","movements"].includes(current().view)) render();
+      else setView("cards");
     }
     if (e.target.id === "quizDraft" && quizOrder[quizIdx]) {
       store.drafts[quizOrder[quizIdx]] = e.target.value;
@@ -799,6 +859,8 @@
     }
   });
   document.addEventListener("change", (e) => {
+    if (e.target.id === "treeGroup") { treeGroup=e.target.value; treeSel=null; treeScroll=null; didInitialTreeScroll=false; render(); }
+    if (e.target.id === "yearJump" && e.target.value) { hideNodeCard(); scrollTreeToYear(+e.target.value); }
     if (e.target.id === "fileImport") importData(e.target.files && e.target.files[0]);
   });
   window.addEventListener("hashchange", () => {
@@ -827,6 +889,7 @@
     workCardHtml: workCardHtml,
     eraCardHtml: eraCardHtml,
     treePage: treePage,
+    drillPage: drillPage, movementsPage: movementsPage,
     renderTreeSvg: renderTreeSvg,
     getTreeSel: function () { return treeSel; },
     setSearch: function (q) { search = q; }
