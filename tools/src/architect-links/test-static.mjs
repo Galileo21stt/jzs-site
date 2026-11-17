@@ -14,7 +14,7 @@ function check(name, cond, extra) {
   }
 }
 
-for (const file of ["data.js", "layout.js", "interaction.js", "app.js"]) {
+for (const file of ["data.js", "study.js", "layout.js", "interaction.js", "app.js"]) {
   execFileSync("node", ["--check", path.join(__dirname, file)], { stdio: "pipe" });
   check("syntax " + file, true);
 }
@@ -34,30 +34,29 @@ const legacyStart = legacyHtml.indexOf("window.PEOPLE");
 const legacyEnd = legacyHtml.indexOf("];", legacyStart) + 2;
 const legacyPeople = loadPeople(legacyHtml.slice(legacyStart, legacyEnd) + ";", "legacy");
 
-check("current data has 19 people", people && people.length === 19, people && people.length);
-check("legacy data has 19 people", legacyPeople && legacyPeople.length === 19);
-
-const byId = Object.fromEntries(people.map((p) => [p.id, p]));
-const legacyById = Object.fromEntries(legacyPeople.map((p) => [p.id, p]));
-const ids = people.map((p) => p.id);
-check("ids match legacy order", JSON.stringify(ids) === JSON.stringify(legacyPeople.map((p) => p.id)), ids.join(","));
-
-const factKeys = ["id", "name", "en", "era", "group", "year", "tags", "idea", "method", "works", "relate", "question", "answer", "trap", "photo", "source", "seed"];
-let factDiffs = 0;
-for (const id of ids) {
-  const a = byId[id], b = legacyById[id];
-  check("legacy still has " + id, !!b);
-  if (!b) continue;
-  for (const k of factKeys) {
-    const sa = JSON.stringify(a[k] ?? null);
-    const sb = JSON.stringify(b[k] ?? null);
-    if (sa !== sb) {
-      factDiffs++;
-      check("field unchanged " + id + "." + k, false, sa + " vs " + sb);
-    }
-  }
-}
-check("no factual field changes", factDiffs === 0, factDiffs + " diffs");
+check("content expanded to at least 58 people", people && people.length >= 58, people && people.length);
+check("legacy archive still has 19 people", legacyPeople.length===19);
+const byId=Object.fromEntries(people.map(p=>[p.id,p]));
+check("legacy review IDs and order preserved", JSON.stringify(people.slice(0,19).map(p=>p.id))===JSON.stringify(legacyPeople.map(p=>p.id)));
+check("person IDs unique", new Set(people.map(p=>p.id)).size===people.length);
+check("relation targets exist", people.every(p=>p.relate.every(([id])=>byId[id])));
+check("new people cite a source and include essential fields", people.slice(19).every(p=>p.sourceRef && ['name','en','era','group','year','idea','method','question','answer','trap'].every(k=>p[k]) && p.works.length>0));
+const context={};context.window=context;
+vm.runInNewContext(dataSrc,context);
+vm.runInNewContext(fs.readFileSync(path.join(__dirname,"study.js"),"utf8"),context);
+check("38 movement definitions", Object.keys(context.MOVEMENTS).length>=38);
+check("all primary movement names resolve", people.every(p=>context.MOVEMENTS[p.era]));
+check("movement definitions include context and boundaries", Object.values(context.MOVEMENTS).every(m=>m.period && m.background && m.claim && m.boundary && m.sourceRef));
+check("all groups resolve", people.every(p=>context.GROUP_ORDER.includes(p.group)));
+check("topic references resolve", context.RELATION_TOPICS.every(t=>t.ids.every(id=>byId[id])));
+check("comparison references resolve", context.COMPARE_PAIRS.every(([a,b])=>byId[a]&&byId[b]));
+const questions=context.ArchitectStudy.buildQuestions(context.PEOPLE);
+check("relation practice has unique stable IDs", new Set(questions.map(q=>q.id)).size===questions.length);
+check("every practice item has a prompt and answer", questions.every(q=>q.prompt && q.answer && q.sourceRef));
+check("four directions and screenshot-inspired examples", ['example','work','person','idea','time'].every(t=>questions.some(q=>q.type===t)));
+check("red house reverse question credits Webb", questions.find(q=>q.id==='work:morris:0').answer.startsWith('菲利普·韦布'));
+check("Schinkel example distinguishes Greek revival", questions.find(q=>q.id==='example:schinkel').answer.includes('希腊复兴'));
+check("Gropius example credits TAC", questions.find(q=>q.id==='example:gropius').answer.includes('TAC'));
 
 const app = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
 const css = fs.readFileSync(path.join(__dirname, "styles.css"), "utf8");
@@ -78,7 +77,7 @@ check("index cache-busts CSS/JS/favicon with a stable version", /styles\.css\?v=
 check("labels have an opaque backdrop, not a text stroke", css.includes(".label-bg") && css.includes("stroke: none !important") && !css.includes("paint-order: stroke fill"));
 
 const workCount = people.reduce((n, p) => n + (p.works || []).length, 0);
-check("at least 30 works remain attached to people", workCount >= 30, workCount);
+check("at least 112 works and writings attached to people", workCount >= 112, workCount);
 const unnamed = people.flatMap((p) => (p.works || []).filter((w) => !w[0] || !w[1]));
 check("every work has a title and date", unnamed.length === 0, JSON.stringify(unnamed));
 

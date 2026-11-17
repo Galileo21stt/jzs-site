@@ -73,7 +73,7 @@ function loadApp() {
   context.window.removeEventListener = function () {};
   context.window.scrollTo = function () {};
   context.window.CSS = context.CSS;
-  const files = ["data.js", "layout.js", "interaction.js", "app.js"];
+  const files = ["data.js", "study.js", "layout.js", "interaction.js", "app.js"];
   for (const f of files) {
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, f), "utf8"), context, { filename: f });
   }

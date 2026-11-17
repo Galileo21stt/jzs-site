@@ -2,7 +2,7 @@
 (function (root) {
   "use strict";
 
-  var YEAR_MIN = 1850;
+  var YEAR_MIN = 1750;
   var YEAR_MAX = 2016;
   var ERA_FONT = 15;
   var LEAF_FONT = 14;
@@ -456,7 +456,7 @@
     var viewW = Math.max(320, opts.viewWidth || 1024);
     var padTop = 72;
     var padBottom = 88;
-    var pxPerYear = opts.pxPerYear || 14;
+    var pxPerYear = opts.pxPerYear || 24;
     var innerH = Math.max((YEAR_MAX - YEAR_MIN) * pxPerYear, 1400);
     var height = padTop + innerH + padBottom;
     function yearToY(year) {
@@ -507,7 +507,7 @@
         span: span,
         side: side,
         y: yearToY(span.mid),
-        w: leafWidth(p.name),
+        w: leafWidth(p.shortName || p.name),
         h: LEAF_H
       };
     });
@@ -591,7 +591,7 @@
 
     var years = [];
     var y0;
-    for (y0 = 1860; y0 <= 2010; y0 += 10) {
+    for (y0 = 1760; y0 <= 2010; y0 += 10) {
       var yy = yearToY(y0);
       var tw = estimateTextWidth(String(y0), YEAR_FONT);
       years.push({
@@ -645,9 +645,9 @@
     var minX = Math.min.apply(null, xs);
     var maxX = Math.max.apply(null, xs);
     var padX = 36;
-    var contentW = maxX - minX + padX * 2;
+    var contentW = Math.max(Math.abs(minX), Math.abs(maxX)) * 2 + padX * 2;
     var width = Math.max(viewW, contentW);
-    var trunkX = (width - contentW) / 2 + padX - minX;
+    var trunkX = width / 2;
 
     function shift(dx) {
       peopleLayout.forEach(function (it) {
