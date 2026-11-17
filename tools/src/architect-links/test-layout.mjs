@@ -91,7 +91,7 @@ const app = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
 const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 check("index loads layout.js", html.includes('src="layout.js"'));
 const treePage = app.slice(app.indexOf("function treePage"), app.indexOf("function cardsPage"));
-check("treePage omits top chrome, filters, and inspector", !treePage.includes("inspector") && !treePage.includes("tree-chrome") && !treePage.includes("filterbar") && !treePage.includes("<h1>") && treePage.includes("node-card") && treePage.includes("tree-fab"));
+check("treePage omits top chrome, filters, inspector, and 目录", !treePage.includes("inspector") && !treePage.includes("tree-chrome") && !treePage.includes("filterbar") && !treePage.includes("<h1>") && treePage.includes("node-card") && !treePage.includes("tree-fab") && !treePage.includes("目录"));
 check("clicking leaf/flower/era opens a node card", app.includes("function showNodeCard") && app.includes("function hideNodeCard") && app.includes('data-kind="person"') && app.includes('data-kind="work"') && app.includes('data-kind="era"'));
 check("Escape and blank click close the card", app.includes("hideNodeCard()") && app.includes('e.key === "Escape"'));
 check("flowers are marks only, no default work titles in SVG", !app.includes("work-caption") && !app.includes("work-label") && !app.includes("work-year"));

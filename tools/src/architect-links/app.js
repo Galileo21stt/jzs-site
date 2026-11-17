@@ -158,7 +158,6 @@
   }
 
   let lastLayout = null;
-  let menuOpen = false;
 
   function layoutApi() {
     return window.ArchitectTreeLayout;
@@ -213,7 +212,7 @@
     }).join("");
 
     const flowerEls = works.map((w) => {
-      return '<g class="flower-node dimmable" tabindex="0" role="button" data-kind="work" data-id="' + esc(w.id) + '" data-person="' + esc(w.personId) + '" aria-label="作品 ' + esc(w.work[0]) + " " + esc(w.work[1]) + '">' +
+      return '<g class="flower-node dimmable" tabindex="0" role="button" data-kind="work" data-id="' + esc(w.id) + '" data-owner="' + esc(w.personId) + '" aria-label="作品 ' + esc(w.work[0]) + " " + esc(w.work[1]) + '">' +
         '<circle class="flower-hit" cx="' + w.x + '" cy="' + w.y + '" r="' + w.hitR + '"/>' +
         flowerMark(w.x, w.y) +
         "</g>";
@@ -254,8 +253,7 @@
       "<p>" + esc(w[2]) + "</p>" +
       '<p class="muted">所属建筑师：' + esc(p.name) + " · " + esc(p.era) + "</p>" +
       '<div class="actions">' +
-        '<button type="button" class="action-btn" data-kind="person" data-id="' + esc(p.id) + '">查看 ' + esc(p.name) + "</button>" +
-        '<button type="button" class="action-btn primary" data-person="' + esc(p.id) + '">完整卡片</button>' +
+        '<button type="button" class="action-btn" data-kind="person" data-id="' + esc(p.id) + '">' + esc(p.name) + "</button>" +
       "</div>";
   }
 
@@ -273,11 +271,7 @@
       '<p class="muted">' + esc(p.era) + " · " + esc(p.group) + "</p>" +
       "<p>" + esc(p.idea) + "</p>" +
       (works ? "<h3>作品</h3><div class=\"works-list\">" + works + "</div>" : "") +
-      (rel ? "<h3>横向关联</h3><div class=\"relate-list\">" + rel + "</div>" : "") +
-      '<div class="actions">' +
-        '<button type="button" class="action-btn primary" data-person="' + esc(p.id) + '">完整卡片</button>' +
-        '<button type="button" class="action-btn" data-start-one="' + esc(p.id) + '">闭卷测这个人物</button>' +
-      "</div>";
+      (rel ? "<h3>横向关联</h3><div class=\"relate-list\">" + rel + "</div>" : "");
   }
 
   function nodeCardHtml(sel) {
@@ -285,14 +279,6 @@
     if (sel.kind === "era") return eraCardHtml(sel.id);
     if (sel.kind === "work") return workCardHtml(sel.id);
     return personCardHtml(sel.id);
-  }
-
-  function closeTreeMenu() {
-    menuOpen = false;
-    const menu = $("#treeMenu");
-    const fab = $("#treeFab");
-    if (menu) menu.hidden = true;
-    if (fab) fab.setAttribute("aria-expanded", "false");
   }
 
   function hideNodeCard() {
@@ -376,7 +362,7 @@
       PEOPLE.forEach((p) => {
         if (!matchIds.has(p.id)) return;
         markMatch($('[data-kind="person"][data-id="' + p.id + '"]', svg));
-        $$('[data-person="' + p.id + '"]', svg).forEach(markMatch);
+        $$('[data-owner="' + p.id + '"]', svg).forEach(markMatch);
         $$('[data-id^="' + p.id + '::"]', svg).forEach(markMatch);
         $$('[data-kind="era"]', svg).forEach((el) => {
           if (el.getAttribute("data-id") === p.era) markMatch(el);
@@ -390,7 +376,7 @@
         }
       });
       if (sel.kind === "person") {
-        $$('[data-person="' + sel.id + '"], [data-id^="' + sel.id + '::"]', svg).forEach((n) => n.classList.add("is-match"));
+        $$('[data-owner="' + sel.id + '"], [data-id^="' + sel.id + '::"]', svg).forEach((n) => n.classList.add("is-match"));
         const p = peopleById[sel.id];
         if (p) {
           $$('[data-kind="era"]', svg).forEach((el) => {
@@ -403,7 +389,7 @@
       } else if (sel.kind === "era") {
         PEOPLE.filter((p) => p.era === sel.id).forEach((p) => {
           markMatch($('[data-kind="person"][data-id="' + p.id + '"]', svg));
-          $$('[data-person="' + p.id + '"]', svg).forEach(markMatch);
+          $$('[data-owner="' + p.id + '"]', svg).forEach(markMatch);
         });
       }
     }
@@ -426,15 +412,6 @@
         '<div class="tree-canvas" id="treeCanvas">' + renderTreeSvg(layout) + "</div>" +
       "</div>" +
       '<aside class="node-card" id="nodeCard" hidden role="dialog" aria-label="节点说明"></aside>' +
-      '<button type="button" class="tree-fab" id="treeFab" aria-expanded="false" aria-controls="treeMenu" aria-haspopup="true">目录</button>' +
-      '<div class="tree-menu" id="treeMenu" hidden role="menu">' +
-        '<label class="tree-search"><span class="visually-hidden">检索建筑师、思潮或作品</span>' +
-        '<input id="treeSearch" type="search" placeholder="检索人物、思潮、作品" autocomplete="off" enterkeyhint="search"></label>' +
-        '<button type="button" data-view="cards">人物卡</button>' +
-        '<button type="button" data-view="quiz">闭卷复测</button>' +
-        '<button type="button" data-view="graph">关系索引</button>' +
-        '<button type="button" data-view="progress">复习记录</button>' +
-      "</div>" +
     "</div>";
   }
 
@@ -662,10 +639,8 @@
     $$(".nav-btn, .mobile-nav button").forEach((btn) => {
       btn.classList.toggle("is-active", btn.getAttribute("data-view") === (view === "person" ? "cards" : view));
     });
-    ["#searchInput", "#treeSearch"].forEach((sel) => {
-      const input = $(sel);
-      if (input && input.value !== search) input.value = search;
-    });
+    const input = $("#searchInput");
+    if (input && input.value !== search) input.value = search;
   }
 
   function render() {
@@ -696,12 +671,6 @@
         }
       }
       if (treeSel) showNodeCard();
-      if (menuOpen) {
-        const menu = $("#treeMenu");
-        const fab = $("#treeFab");
-        if (menu) menu.hidden = false;
-        if (fab) fab.setAttribute("aria-expanded", "true");
-      }
     }
     const draft = $("#quizDraft");
     if (draft) {
@@ -728,27 +697,19 @@
     return $$("#treeSvg [data-kind]");
   }
 
-  document.addEventListener("click", (e) => {
-    const act = e.target.closest("button, [data-card], [data-kind], a.brand, .tree-fab");
+  function handleDocumentClick(e) {
+    const target = e.target && (e.target.nodeType === 3 ? e.target.parentNode : e.target);
+    const act = (window.ArchitectTreeInteraction && window.ArchitectTreeInteraction.closestActionNode(target)) ||
+      (target && target.closest && target.closest("button, [data-card], [data-kind], a.brand"));
     if (!act) {
-      if (current().view === "tree" && !e.target.closest("#nodeCard, #treeMenu")) {
+      if (current().view === "tree" && !(target && target.closest && target.closest("#nodeCard"))) {
         hideNodeCard();
-        closeTreeMenu();
       }
       return;
     }
-    if (act.id === "treeFab") {
-      menuOpen = !menuOpen;
-      const menu = $("#treeMenu");
-      if (menu) menu.hidden = !menuOpen;
-      act.setAttribute("aria-expanded", menuOpen ? "true" : "false");
-      if (menuOpen) {
-        const input = $("#treeSearch");
-        if (input) input.focus();
-      }
-      return;
-    }
-    if (act.dataset.closeCard) { hideNodeCard(); return; }
+    const intent = window.ArchitectTreeInteraction
+      ? window.ArchitectTreeInteraction.interactionFromElement(target, e)
+      : null;
     if (act.id === "exportBtn") { download(); return; }
     if (act.id === "importBtn") { $("#fileImport").click(); return; }
     if (act.id === "resetBtn") {
@@ -760,62 +721,43 @@
       }
       return;
     }
-    if (act.dataset.scroll === "roots") {
-      const st = $("#treeStage");
-      if (st) st.scrollTop = window.innerWidth < 880 ? 0 : st.scrollHeight;
-      return;
-    }
-    if (act.dataset.scroll === "now") {
-      const st = $("#treeStage");
-      if (st) st.scrollTop = window.innerWidth < 880 ? st.scrollHeight : 0;
+    if (intent && intent.type === "dismiss") { hideNodeCard(); return; }
+    if (intent && intent.type === "select") {
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
+      if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+      selectNode(intent.kind, intent.id);
       return;
     }
     if (act.dataset.filter) { filter = act.dataset.filter; render(); return; }
-    if (act.dataset.person) { goPerson(act.dataset.person); return; }
+    if (intent && intent.type === "goPerson") { goPerson(intent.id); return; }
+    if (act.dataset.person && !act.dataset.kind) { goPerson(act.dataset.person); return; }
     if (act.dataset.view) { setView(act.dataset.view); return; }
     if (act.dataset.startOne) { makeQuiz("solo", act.dataset.startOne); setView("quiz"); return; }
     if (act.dataset.quizMode) { quizRound = 0; makeQuiz(act.dataset.quizMode); setView("quiz"); return; }
     if (act.dataset.reveal) { revealed = !revealed; render(); return; }
     if (act.dataset.rate) { record(act.dataset.rate); return; }
-    if (act.dataset.kind) {
-      const open = e.detail === 2;
-      if (act.dataset.kind === "person" && (e.metaKey || e.ctrlKey || open)) {
-        goPerson(act.dataset.id);
-        return;
-      }
-      selectNode(act.dataset.kind, act.dataset.id);
-    }
-  });
+  }
+  document.addEventListener("click", handleDocumentClick);
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "/" && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
+      if (current().view === "tree") return;
       e.preventDefault();
-      if (current().view === "tree") {
-        menuOpen = true;
-        const menu = $("#treeMenu");
-        const fab = $("#treeFab");
-        if (menu) menu.hidden = false;
-        if (fab) fab.setAttribute("aria-expanded", "true");
-        const input = $("#treeSearch");
-        if (input) input.focus();
-      } else {
-        const input = $("#searchInput");
-        if (input) input.focus();
-      }
+      const input = $("#searchInput");
+      if (input) input.focus();
       return;
     }
     if (e.key === "Escape") {
       const activeId = document.activeElement && document.activeElement.id;
-      if ((activeId === "searchInput" || activeId === "treeSearch") && search) {
+      if (activeId === "searchInput" && search) {
         search = "";
-        $$("#searchInput, #treeSearch").forEach((el) => { el.value = ""; });
+        if ($("#searchInput")) $("#searchInput").value = "";
         if (current().view === "tree") applyTreeHighlight();
         else render();
         return;
       }
       if (current().view === "tree") {
         if (treeSel) hideNodeCard();
-        closeTreeMenu();
       }
       return;
     }
@@ -839,7 +781,7 @@
   });
 
   document.addEventListener("input", (e) => {
-    if (e.target.id === "searchInput" || e.target.id === "treeSearch") {
+    if (e.target.id === "searchInput") {
       search = e.target.value;
       if (current().view === "tree") applyTreeHighlight();
       else if (current().view === "cards") render();
@@ -866,6 +808,25 @@
     if (current().view === "tree" && treeSel) positionNodeCard();
   }, true);
 
-  if (!location.hash) location.replace("#tree");
-  else render();
+  window.ArchitectTreeApp = {
+    interactionFromElement: function (el, ev) {
+      return window.ArchitectTreeInteraction.interactionFromElement(el, ev);
+    },
+    handleDocumentClick: handleDocumentClick,
+    selectNode: selectNode,
+    hideNodeCard: hideNodeCard,
+    showNodeCard: showNodeCard,
+    personCardHtml: personCardHtml,
+    workCardHtml: workCardHtml,
+    eraCardHtml: eraCardHtml,
+    treePage: treePage,
+    renderTreeSvg: renderTreeSvg,
+    getTreeSel: function () { return treeSel; },
+    setSearch: function (q) { search = q; }
+  };
+
+  if (!globalThis.ARCHITECT_TREE_TEST) {
+    if (!location.hash) location.replace("#tree");
+    else render();
+  }
 })();
