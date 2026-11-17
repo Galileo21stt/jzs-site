@@ -61,15 +61,16 @@ check("no factual field changes", factDiffs === 0, factDiffs + " diffs");
 
 const app = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
 const css = fs.readFileSync(path.join(__dirname, "styles.css"), "utf8");
+const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 check("keeps storage key arch-links-v1", app.includes('KEY = "arch-links-v1"') || app.includes("KEY = 'arch-links-v1'"));
+check("layout module is loaded", html.includes('src="layout.js"') && fs.existsSync(path.join(__dirname, "layout.js")));
 check("does not draw always-on career twigs", !app.includes("const twigs") && !app.includes('class="twig'));
-check("renders work captions", app.includes("work-caption") && app.includes("function workCaption"));
-check("renders year guides to the trunk", app.includes("year-guide"));
-check("flowers keep accessible names", app.includes("<title>") && app.includes("aria-label"));
-check("leaf type is at least 14px", /leaf-label\s*\{[^}]*font-size:\s*14px/.test(css));
-check("era type is at least 15px", /era-label[\s\S]{0,120}font-size:\s*15px/.test(css));
-check("captions appear on hover or selection", css.includes(".flower-bundle:hover .work-caption") && css.includes(".flower-bundle.is-open .work-caption"));
-check("year guides are hidden until hover or selection", css.includes(".year-guide") && css.includes("opacity: 0") && css.includes(".flower-bundle:hover .year-guide"));
+check("does not paint a halo stroke on SVG text", !css.includes("stroke-width: 5px") && !css.includes("paint-order: stroke fill") && css.includes("stroke: none !important"));
+check("selected leaf names stay dark", /leaf-node\.is-active \.leaf-label[\s\S]{0,80}fill:\s*var\(--ink\)/.test(css));
+check("leaf type is at least 14px", /leaf-label[\s\S]{0,80}font-size:\s*14px/.test(css));
+check("era type is at least 15px", /era-label[\s\S]{0,80}font-size:\s*15px/.test(css));
+check("tree page uses a node card instead of a docked inspector", app.includes("function showNodeCard") && app.includes("node-card") && !app.includes('class="inspector"'));
+check("flowers keep accessible names", app.includes("aria-label") && app.includes("作品 "));
 
 const workCount = people.reduce((n, p) => n + (p.works || []).length, 0);
 check("at least 30 works remain attached to people", workCount >= 30, workCount);

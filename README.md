@@ -47,7 +47,7 @@ GitHub Pages 从 `main` 分支根目录发布。合并到 `main` 后约 1 分钟
 
 ## 附：外国近现代史时间树
 
-独立复习页，不经过本仓库的 `tools/build.js`，路径：
+独立复习页，不经过本仓库的 `tools/build.js`。当前为全屏时间树：点叶、枝或花后，在节点旁阅读说明。路径：
 
 - 源码：`tools/src/architect-links/`
 - 线上：https://galileo21stt.github.io/jzs-site/tools/src/architect-links/

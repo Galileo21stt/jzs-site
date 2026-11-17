@@ -40,8 +40,6 @@
   let revealed = false;
   let quizRound = 0;
   let treeSel = null; // {kind, id}
-  let showWorks = true;
-  let showRelate = false;
   let treeScroll = null;
   let didInitialTreeScroll = false;
 
@@ -159,329 +157,219 @@
     return "https://commons.wikimedia.org/w/index.php?search=" + encodeURIComponent(p.photo || p.name) + "&title=Special:MediaSearch&go=Go&type=image";
   }
 
-  /* ---------- tree layout ---------- */
-  function layoutTree(minWidth, isMobile) {
-    const padTop = 36;
-    const padBottom = 90;
-    const innerH = Math.max(1680, (YEAR_MAX - YEAR_MIN) * (isMobile ? 11 : 13));
-    const height = padTop + innerH + padBottom;
-    let trunkX = isMobile ? 80 : 420;
-    const yearToY = (year) => padTop + ((YEAR_MAX - year) / (YEAR_MAX - YEAR_MIN)) * innerH;
+  let lastLayout = null;
+  let menuOpen = false;
 
-    const erasMap = new Map();
-    PEOPLE.forEach((p) => {
-      const era = p.era || "未分组";
-      if (!erasMap.has(era)) erasMap.set(era, []);
-      erasMap.get(era).push(p);
-    });
-    const eras = Array.from(erasMap.entries()).map(([name, members]) => {
-      const tokens = members.flatMap((p) => {
-        const s = personSpan(p);
-        return [[s.start, s.end]];
-      });
-      const span = spanOf(tokens);
-      return { name, members, span };
-    }).sort((a, b) => a.span.mid - b.span.mid);
-
-    const groups = GROUP_ORDER.map((name) => {
-      const members = PEOPLE.filter((p) => p.group === name);
-      const tokens = members.flatMap((p) => {
-        const s = personSpan(p);
-        return [[s.start, s.end]];
-      });
-      return { name, members, span: spanOf(tokens) };
-    }).filter((g) => g.span);
-
-    // swimlanes for architects so overlapping spans don't collide
-    const peopleLayout = PEOPLE.map((p) => {
-      const span = personSpan(p);
-      return { p, span, era: p.era || "未分组" };
-    }).sort((a, b) => a.span.start - b.span.start || a.span.mid - b.span.mid);
-
-    // Compact columns by nearby mid-years only. Do not reserve a vertical
-    // "career bar" lane — that reads as a Gantt chart and leaves a hollow middle.
-    const eraSide = {};
-    eras.forEach((e) => { eraSide[e.name] = "right"; });
-
-    const LEAF_W = 180;
-    const LEAF_H = 36;
-    const BRANCH = 170;
-    const COL_W = 250;
-    trunkX = isMobile ? 80 : 148;
-
-    peopleLayout.forEach((item) => {
-      item.side = "right";
-      item.y = yearToY(item.span.mid);
-      item.y0 = yearToY(item.span.end);
-      item.y1 = yearToY(item.span.start);
-    });
-    const colBottoms = [];
-    peopleLayout.slice().sort((a, b) => a.y - b.y).forEach((item) => {
-      let lane = 0;
-      while (lane < colBottoms.length && item.y < colBottoms[lane] + LEAF_H + 10) lane++;
-      if (lane === colBottoms.length) colBottoms.push(item.y);
-      else colBottoms[lane] = item.y;
-      item.lane = lane;
-      item.x = trunkX + BRANCH + lane * COL_W + LEAF_W / 2;
-    });
-    const width = trunkX + BRANCH + Math.max(1, colBottoms.length) * COL_W + 80;
-
-    const byId = Object.fromEntries(peopleLayout.map((x) => [x.p.id, x]));
-    const eraLayout = eras.map((e) => {
-      const ms = e.members.map((p) => byId[p.id]);
-      const side = eraSide[e.name];
-      const dir = side === "right" ? 1 : -1;
-      const midY = yearToY(e.span.mid);
-      const stubX = trunkX + dir * 88;
-      const minY = Math.min.apply(null, ms.map((m) => m.y).concat([midY]));
-      const maxY = Math.max.apply(null, ms.map((m) => m.y).concat([midY]));
-      const labelY = midY;
-      const labelX = trunkX + dir * 18;
-      return { ...e, side, dir, midY, stubX, minY, maxY, labelX, labelY, membersL: ms };
-    });
-
-    // nudge era labels that collide
-    const bySide = { left: [], right: [] };
-    eraLayout.forEach((e) => bySide[e.side].push(e));
-    Object.values(bySide).forEach((arr) => {
-      arr.sort((a, b) => a.labelY - b.labelY);
-      for (let i = 1; i < arr.length; i++) {
-        if (arr[i].labelY - arr[i - 1].labelY < 22) {
-          arr[i].labelY = arr[i - 1].labelY + 22;
-        }
-      }
-    });
-
-    const works = [];
-    peopleLayout.forEach((item) => {
-      const list = (item.p.works || []).map((w, wi) => ({ w, wi, year: workYear(w) })).filter((x) => x.year != null);
-      list.forEach((entry, fi) => {
-        const n = list.length;
-        const gap = 26;
-        const clusterW = Math.max(0, (n - 1) * gap);
-        const startX = item.x + LEAF_W / 2 + 22;
-        works.push({
-          id: item.p.id + "::" + entry.wi,
-          personId: item.p.id,
-          work: entry.w,
-          year: entry.year,
-          yearY: yearToY(entry.year),
-          x: startX + fi * gap,
-          y: item.y,
-          captionX: startX + clusterW + 16,
-          captionY: item.y - ((n - 1) * 11) + fi * 22,
-          index: fi,
-          side: "right"
-        });
-      });
-    });
-
-    return { width, height, trunkX, padTop, padBottom, innerH, yearToY, people: peopleLayout, eras: eraLayout, groups, works, isMobile, leafW: LEAF_W, leafH: LEAF_H };
+  function layoutApi() {
+    return window.ArchitectTreeLayout;
   }
 
-  function flowerMark(x, y, id, title) {
-    const r = 4.2;
-    const d = 5.4;
-    const petals = [
-      [x, y - d], [x + d, y], [x, y + d], [x - d, y]
-    ].map((pt) => '<circle class="flower-petals" cx="' + pt[0] + '" cy="' + pt[1] + '" r="' + r + '"/>').join("");
-    return petals + '<circle class="flower-core" cx="' + x + '" cy="' + y + '" r="2.1"/>';
-  }
-
-  function workCaption(w) {
-    const title = w.work[0] + "  ·  " + w.work[1];
-    const textW = Math.min(220, 16 + title.length * 12);
-    const x = w.captionX;
-    const y = w.captionY;
-    return '<g class="work-caption" pointer-events="none">' +
-      '<rect class="work-caption-bg" x="' + x + '" y="' + (y - 14) + '" width="' + textW + '" height="22" rx="4"/>' +
-      '<text class="work-label" x="' + (x + 8) + '" y="' + (y + 2) + '">' + esc(title) + "</text></g>";
+  function flowerMark(x, y) {
+    const r = 6.5;
+    const d = 4.6;
+    const pts = [[x, y - d], [x + d, y], [x, y + d], [x - d, y]];
+    return pts.map((pt) => '<circle class="flower-petals" cx="' + pt[0] + '" cy="' + pt[1] + '" r="' + r + '"/>').join("") +
+      '<circle class="flower-core" cx="' + x + '" cy="' + y + '" r="2.1"/>';
   }
 
   function renderTreeSvg(layout) {
-    const { width, height, trunkX, yearToY, people, eras, groups, works } = layout;
-    const yTop = yearToY(YEAR_MAX);
-    const yBot = yearToY(YEAR_MIN);
-    const years = [];
-    for (let y = YEAR_MIN; y <= YEAR_MAX; y += 10) years.push(y);
+    const { width, height, trunkX, padTop, innerH, people, eras, works, years, dirTop, dirBot } = layout;
+    const yTop = padTop;
+    const yBot = padTop + innerH;
+    const byId = Object.fromEntries(people.map((item) => [item.p.id, item]));
 
-    const yearMarks = years.map((y) => {
-      const yy = yearToY(y);
-      const major = y % 20 === 0;
-      return '<line class="guide-year" x1="' + (trunkX - 28) + '" y1="' + yy + '" x2="' + (trunkX + 28) + '" y2="' + yy + '"/>' +
-        '<text class="year' + (major ? " major" : "") + '" text-anchor="end" x="' + (trunkX - 34) + '" y="' + (yy + 4) + '">' + y + "</text>";
-    }).join("");
-
-    const groupBands = groups.map((g, i) => {
-      const y0 = yearToY(g.span.end);
-      const y1 = yearToY(g.span.start);
-      const x = 8 + (i % 2) * 4;
-      const h = Math.max(8, y1 - y0);
-      return '<rect class="group-band dimmable" x="' + x + '" y="' + y0 + '" width="6" height="' + h + '" rx="1"/>' +
-        '<text class="group-label dimmable" x="' + (x + 10) + '" y="' + (y0 + 12) + '" transform="rotate(-90 ' + (x + 10) + ' ' + (y0 + 12) + ')">' + esc(g.name) + "</text>";
+    const yearEls = years.map((y) => {
+      return '<line class="guide-year" x1="' + (trunkX - 8) + '" y1="' + y.tickY + '" x2="' + (trunkX + 8) + '" y2="' + y.tickY + '"/>' +
+        '<text class="year' + (y.major ? " major" : "") + '" text-anchor="end" x="' + (y.labelX + y.labelW) + '" y="' + (y.tickY + 4) + '">' + y.year + "</text>";
     }).join("");
 
     const trunk = '<line class="trunk" x1="' + trunkX + '" y1="' + yTop + '" x2="' + trunkX + '" y2="' + yBot + '"/>' +
       '<path class="root" d="M' + trunkX + "," + yBot + " l-18,16 M" + trunkX + "," + yBot + " l0,18 M" + trunkX + "," + yBot + ' l18,16"/>';
 
-    const dirArrow = '<text class="year major" x="' + (trunkX + 12) + '" y="' + (yTop - 10) + '">更晚 ↑</text>' +
-      '<text class="year" x="' + (trunkX + 12) + '" y="' + (yBot + 32) + '">更早 ↓ 起源</text>';
+    const dir = '<text class="year major" x="' + dirTop.x + '" y="' + (dirTop.y + 14) + '">' + esc(dirTop.text) + "</text>" +
+      '<text class="year" x="' + dirBot.x + '" y="' + (dirBot.y + 14) + '">' + esc(dirBot.text) + "</text>";
 
-    const branchLines = eras.map((e) => {
-      const parts = ['M' + trunkX + "," + e.midY + " H" + e.stubX + " M" + e.stubX + "," + e.minY + " V" + e.maxY];
-      e.membersL.forEach((m) => {
-        parts.push("M" + e.stubX + "," + m.y + " H" + m.x);
+    const branchEls = eras.map((e) => {
+      const parts = ["M" + trunkX + "," + e.midY + " H" + e.stubX + " M" + e.stubX + "," + e.minY + " V" + e.maxY];
+      e.members.forEach((p) => {
+        const item = byId[p.id];
+        if (!item) return;
+        parts.push("M" + e.stubX + "," + item.y + " H" + item.innerX);
       });
-      return '<path class="branch dimmable" data-era="' + esc(e.name) + '" d="' + parts.join(" ") + '"/>';
+      return '<path class="branch dimmable" d="' + parts.join(" ") + '"/>';
     }).join("");
 
     const eraLabels = eras.map((e) => {
-      const anchor = e.side === "right" ? "start" : "end";
-      const x = e.side === "right" ? trunkX + 10 : trunkX - 10;
-      return '<g class="era-hit dimmable" tabindex="0" role="button" data-kind="era" data-id="' + esc(e.name) + '">' +
-        '<text class="era-label" text-anchor="' + anchor + '" x="' + x + '" y="' + (e.labelY - 10) + '">' + esc(e.name) + "</text></g>";
+      return '<g class="era-hit dimmable" tabindex="0" role="button" data-kind="era" data-id="' + esc(e.name) + '" aria-label="思潮 ' + esc(e.name) + '">' +
+        '<text class="era-label" text-anchor="' + e.labelAnchor + '" x="' + e.labelX + '" y="' + (e.labelY + 14) + '">' + esc(e.name) + "</text></g>";
     }).join("");
 
-    const leafW = layout.leafW || 180;
-    const leafH = layout.leafH || 36;
     const leaves = people.map((item) => {
-      const x = item.x - leafW / 2;
-      const y = item.y - leafH / 2;
-      return '<g class="leaf-node dimmable" tabindex="0" role="button" data-kind="person" data-id="' + esc(item.p.id) + '" aria-label="' + esc(item.p.name) + '">' +
-        '<rect class="leaf-bg" x="' + x + '" y="' + y + '" width="' + leafW + '" height="' + leafH + '" rx="10"/>' +
+      const x = item.x - item.w / 2;
+      const y = item.y - item.h / 2;
+      return '<g class="leaf-node dimmable" tabindex="0" role="button" data-kind="person" data-id="' + esc(item.p.id) + '" aria-label="建筑师 ' + esc(item.p.name) + '">' +
+        '<rect class="leaf-bg" x="' + x + '" y="' + y + '" width="' + item.w + '" height="' + item.h + '" rx="8"/>' +
         '<text class="leaf-label" text-anchor="middle" x="' + item.x + '" y="' + (item.y + 5) + '">' + esc(item.p.name) + "</text></g>";
     }).join("");
 
-    const flowerEls = showWorks ? works.map((w) => {
-      const title = w.work[0] + "（" + w.work[1] + "）";
-      const guide = '<path class="year-guide" data-person="' + esc(w.personId) + '" d="M' + w.x + "," + w.y + " L" + trunkX + "," + w.yearY + '"/>';
-      const yearTag = '<text class="work-year" x="' + w.x + '" y="' + (w.y + 18) + '" text-anchor="middle">' + esc(String(w.year)) + "</text>";
-      return '<g class="flower-bundle dimmable" data-kind="work" data-id="' + esc(w.id) + '" data-person="' + esc(w.personId) + '">' +
-        guide +
-        '<g class="flower-node" tabindex="0" role="button" data-kind="work" data-id="' + esc(w.id) + '" aria-label="' + esc(title) + '">' +
-        flowerMark(w.x, w.y, w.id, title) +
-        "<title>" + esc(title) + "</title></g>" +
-        yearTag + workCaption(w) +
+    const flowerEls = works.map((w) => {
+      return '<g class="flower-node dimmable" tabindex="0" role="button" data-kind="work" data-id="' + esc(w.id) + '" data-person="' + esc(w.personId) + '" aria-label="作品 ' + esc(w.work[0]) + " " + esc(w.work[1]) + '">' +
+        '<circle class="flower-hit" cx="' + w.x + '" cy="' + w.y + '" r="' + w.hitR + '"/>' +
+        flowerMark(w.x, w.y) +
         "</g>";
-    }).join("") : "";
+    }).join("");
 
-    let relate = "";
-    if (showRelate) {
-      const seen = new Set();
-      PEOPLE.forEach((p) => {
-        (p.relate || []).forEach(([id]) => {
-          const a = people.find((x) => x.p.id === p.id);
-          const b = people.find((x) => x.p.id === id);
-          if (!a || !b) return;
-          const key = [p.id, id].sort().join("::");
-          if (seen.has(key)) return;
-          seen.add(key);
-          const mx = (a.x + b.x) / 2;
-          const my = (a.y + b.y) / 2 - 24;
-          relate += '<path class="relate-line dimmable" data-relate="' + esc(key) + '" d="M' + a.x + "," + a.y + " Q" + mx + "," + my + " " + b.x + "," + b.y + '"/>';
-        });
-      });
-    }
-
-    const vbW = width;
-    return '<svg class="tree-svg" id="treeSvg" viewBox="0 0 ' + vbW + " " + height + '" width="' + vbW + '" height="' + height + '" role="img" aria-label="外国近现代建筑史时间树，时间自下而上">' +
-      groupBands + yearMarks + trunk + dirArrow + branchLines + relate + eraLabels + flowerEls + leaves +
+    return '<svg id="treeSvg" class="tree-svg" viewBox="0 0 ' + width + " " + height + '" width="' + width + '" height="' + height + '" role="img" aria-label="外国近现代建筑史时间树，时间自下而上">' +
+      yearEls + trunk + dir + branchEls + eraLabels + leaves + flowerEls +
       "</svg>";
   }
 
-  function inspectorHtml() {
-    const s = treeSel;
-    if (!s) {
-      return '<div class="kicker">怎么读这棵树</div>' +
-        "<h2>时间在主干上，关系不要挤在一根线上。</h2>" +
-        '<p class="lede">自下而上是时间：下面是起源，上面更晚。枝是思潮或流派线索，叶是建筑师，花是作品。同一人可以同时属于时段带、思潮枝和若干标签，横向关联会另外标出，不把历史收成唯一归属。</p>' +
-        '<div class="note">数据沿用原人物卡，未改事实表述。花朵旁的数字是作品年份；悬停、聚焦或选中后会显示作品全名，并有细线连回主干上的年代。</div>' +
-        '<p class="faint">键盘：Tab 移动，Enter 打开完整卡片，/ 检索，Esc 取消选择。方向键沿时间上下移动。</p>';
-    }
-    if (s.kind === "era") {
-      const members = PEOPLE.filter((p) => p.era === s.id);
-      const other = PEOPLE.filter((p) => p.era !== s.id && ((p.tags || []).some((t) => t.includes(s.id) || s.id.includes(t)) || p.group === s.id));
-      return '<div class="kicker">枝 · 思潮 / 流派 / 思想</div><h2>' + esc(s.id) + "</h2>" +
-        '<div class="note">这是便于复习的线索，不是唯一标签。人物仍可能与其他思潮发生关系。</div>' +
-        "<h3>这条枝上的建筑师</h3>" +
-        members.map((p) => '<button class="relation" data-person="' + esc(p.id) + '"><strong>' + esc(p.name) + '</strong><small>' + esc(p.year) + " · " + esc((p.tags || []).join(" · ")) + "</small></button>").join("") +
-        (other.length ? "<h3>可能相关（未作为本枝主线索）</h3>" + other.map((p) => '<button class="relation" data-person="' + esc(p.id) + '"><strong>' + esc(p.name) + '</strong><small>' + esc(p.era) + " · " + esc((p.tags || []).join(" · ")) + "</small></button>").join("") : "");
-    }
-    if (s.kind === "work") {
-      const [pid, wi] = s.id.split("::");
-      const p = peopleById[pid];
-      const w = p && p.works && p.works[+wi];
-      if (!p || !w) return "<p>未找到这件作品。</p>";
-      return '<div class="kicker">花 · 建筑作品 / 文本</div><h2>' + esc(w[0]) + "</h2>" +
-        '<div class="english">' + esc(w[1]) + "</div>" +
-        "<p>" + esc(w[2]) + "</p>" +
-        '<p class="muted">所属建筑师：' + esc(p.name) + " · " + esc(p.era) + "</p>" +
-        '<div class="note">作品按自身年份落在时间主干附近，不必与人物的活动中点重合。</div>' +
-        '<div class="actions"><button class="action-btn primary" data-person="' + esc(p.id) + '">打开 ' + esc(p.name) + " 的卡片</button></div>";
-    }
-    const p = peopleById[s.id];
-    if (!p) return "<p>未找到这个人物。</p>";
-    const works = (p.works || []).map((w) => '<div class="work"><strong>' + esc(w[0]) + "</strong><small>" + esc(w[1]) + "</small><p>" + esc(w[2]) + "</p></div>").join("");
-    const rel = (p.relate || []).map(([id, why]) => '<button class="relation" data-person="' + esc(id) + '"><strong>' + esc(label(id)) + '</strong><small>' + esc(why) + "</small></button>").join("");
-    return '<div class="kicker">叶 · 建筑师</div><h2>' + esc(p.name) + "</h2>" +
-      '<div class="english">' + esc(p.en) + " · " + esc(p.year) + "</div>" +
-      '<div class="tag-list">' + badges(p) + "</div>" +
-      '<p class="muted">时段带：' + esc(p.group) + " ｜ 思潮枝：" + esc(p.era) + "</p>" +
-      "<p>" + esc(p.idea) + "</p>" +
-      "<h3>作品</h3><div class=\"works-list\">" + works + "</div>" +
-      "<h3>横向关联</h3>" + rel +
+  function eraCardHtml(name) {
+    const members = PEOPLE.filter((p) => p.era === name);
+    if (!members.length) return "<p>未找到这条思潮。</p>";
+    const tokens = members.flatMap((p) => {
+      const s = personSpan(p);
+      return [[s.start, s.end]];
+    });
+    const span = spanOf(tokens);
+    const years = span ? Math.round(span.start) + "–" + Math.round(span.end) : "";
+    const list = members.map((p) =>
+      '<button type="button" class="relation" data-kind="person" data-id="' + esc(p.id) + '"><strong>' + esc(p.name) + "</strong><small>" + esc(p.year) + "</small></button>"
+    ).join("");
+    return '<div class="kicker">枝 · 思潮 / 流派</div><h2>' + esc(name) + "</h2>" +
+      '<div class="english">' + esc(years) + "</div>" +
+      "<p>这是一条思想或流派线索，不是唯一历史归属。下面是出现在这根枝上的建筑师。</p>" +
+      "<h3>建筑师</h3><div class=\"relate-list\">" + list + "</div>";
+  }
+
+  function workCardHtml(id) {
+    const parts = id.split("::");
+    const pid = parts[0];
+    const wi = +parts[1];
+    const p = peopleById[pid];
+    const w = p && p.works && p.works[wi];
+    if (!p || !w) return "<p>未找到这件作品。</p>";
+    return '<div class="kicker">花 · 作品</div><h2>' + esc(w[0]) + "</h2>" +
+      '<div class="english">' + esc(w[1]) + "</div>" +
+      "<p>" + esc(w[2]) + "</p>" +
+      '<p class="muted">所属建筑师：' + esc(p.name) + " · " + esc(p.era) + "</p>" +
       '<div class="actions">' +
-        '<button class="action-btn primary" data-person="' + esc(p.id) + '">打开完整卡片</button>' +
-        '<button class="action-btn" data-start-one="' + esc(p.id) + '">闭卷测这个人物</button>' +
+        '<button type="button" class="action-btn" data-kind="person" data-id="' + esc(p.id) + '">查看 ' + esc(p.name) + "</button>" +
+        '<button type="button" class="action-btn primary" data-person="' + esc(p.id) + '">完整卡片</button>' +
       "</div>";
   }
 
-  function applyRailHighlight() {
-    const rail = $("#railTree");
-    if (!rail) return;
-    const q = search.trim().toLowerCase();
-    const matchIds = new Set(filteredPeople().map((p) => p.id));
-    const hasQuery = !!(q || (filter !== "全部"));
-    $$(".rail-item", rail).forEach((li) => {
-      const btn = $("[data-kind]", li);
-      if (!btn) return;
-      const kind = btn.dataset.kind;
-      const id = btn.dataset.id;
-      let isMatch = true;
-      if (hasQuery) {
-        if (kind === "person") isMatch = matchIds.has(id);
-        else if (kind === "work") isMatch = matchIds.has(id.split("::")[0]);
-        else if (kind === "era") isMatch = PEOPLE.some((p) => p.era === id && matchIds.has(p.id));
-      }
-      const isActive = !!(treeSel && treeSel.kind === kind && treeSel.id === id);
-      li.classList.toggle("is-match", !!(hasQuery && isMatch) || isActive);
-      li.classList.toggle("is-dim", hasQuery && !isMatch && !isActive);
-      li.classList.toggle("is-active", isActive);
+  function personCardHtml(id) {
+    const p = peopleById[id];
+    if (!p) return "<p>未找到这个人物。</p>";
+    const works = (p.works || []).map((w, wi) =>
+      '<button type="button" class="work" data-kind="work" data-id="' + esc(p.id + "::" + wi) + '"><strong>' + esc(w[0]) + "</strong><small>" + esc(w[1]) + "</small></button>"
+    ).join("");
+    const rel = (p.relate || []).map(([rid, why]) =>
+      '<button type="button" class="relation" data-kind="person" data-id="' + esc(rid) + '"><strong>' + esc(label(rid)) + "</strong><small>" + esc(why) + "</small></button>"
+    ).join("");
+    return '<div class="kicker">叶 · 建筑师</div><h2>' + esc(p.name) + "</h2>" +
+      '<div class="english">' + esc(p.en) + " · " + esc(p.year) + "</div>" +
+      '<p class="muted">' + esc(p.era) + " · " + esc(p.group) + "</p>" +
+      "<p>" + esc(p.idea) + "</p>" +
+      (works ? "<h3>作品</h3><div class=\"works-list\">" + works + "</div>" : "") +
+      (rel ? "<h3>横向关联</h3><div class=\"relate-list\">" + rel + "</div>" : "") +
+      '<div class="actions">' +
+        '<button type="button" class="action-btn primary" data-person="' + esc(p.id) + '">完整卡片</button>' +
+        '<button type="button" class="action-btn" data-start-one="' + esc(p.id) + '">闭卷测这个人物</button>' +
+      "</div>";
+  }
+
+  function nodeCardHtml(sel) {
+    if (!sel) return "";
+    if (sel.kind === "era") return eraCardHtml(sel.id);
+    if (sel.kind === "work") return workCardHtml(sel.id);
+    return personCardHtml(sel.id);
+  }
+
+  function closeTreeMenu() {
+    menuOpen = false;
+    const menu = $("#treeMenu");
+    const fab = $("#treeFab");
+    if (menu) menu.hidden = true;
+    if (fab) fab.setAttribute("aria-expanded", "false");
+  }
+
+  function hideNodeCard() {
+    treeSel = null;
+    const card = $("#nodeCard");
+    if (card) {
+      card.hidden = true;
+      card.innerHTML = "";
+    }
+    applyTreeHighlight();
+  }
+
+  function positionNodeCard() {
+    const card = $("#nodeCard");
+    const api = layoutApi();
+    if (!card || card.hidden || !treeSel || !api) return;
+    const kind = treeSel.kind;
+    const id = treeSel.id;
+    let node = null;
+    $$("#treeSvg [data-kind]").forEach((el) => {
+      if (el.getAttribute("data-kind") === kind && el.getAttribute("data-id") === id) node = el;
     });
-    const panel = $("#inspector");
-    if (panel) panel.innerHTML = inspectorHtml();
+    if (!node) return;
+    node.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
+    const nr = node.getBoundingClientRect();
+    const cw = Math.min(320, Math.max(200, window.innerWidth - 20));
+    card.style.position = "fixed";
+    card.style.width = cw + "px";
+    card.style.left = "0px";
+    card.style.top = "0px";
+    card.style.maxHeight = "min(60vh, 480px)";
+    const ch = Math.min(card.scrollHeight, Math.min(window.innerHeight * 0.6, 480));
+    const prefer = nr.left + nr.width / 2 > window.innerWidth / 2 ? "left" : "right";
+    const placed = api.placeCard(
+      { x: nr.left, y: nr.top, w: nr.width, h: nr.height },
+      cw,
+      ch,
+      { w: window.innerWidth, h: window.innerHeight },
+      prefer,
+      10
+    );
+    card.style.left = placed.x + "px";
+    card.style.top = placed.y + "px";
+    card.style.width = placed.w + "px";
+    card.style.maxHeight = placed.h + "px";
+  }
+
+  function showNodeCard() {
+    const card = $("#nodeCard");
+    if (!card) return;
+    if (!treeSel) {
+      card.hidden = true;
+      card.innerHTML = "";
+      return;
+    }
+    card.hidden = false;
+    card.innerHTML = nodeCardHtml(treeSel) +
+      '<button type="button" class="node-card-close" data-close-card="1" aria-label="关闭">关闭</button>';
+    positionNodeCard();
   }
 
   function applyTreeHighlight() {
-    applyRailHighlight();
     const svg = $("#treeSvg");
     if (!svg) return;
     const q = search.trim().toLowerCase();
     const matchIds = new Set(filteredPeople().map((p) => p.id));
-    const hasQuery = !!(q || (filter !== "全部"));
+    const hasQuery = !!q;
     const sel = treeSel;
     svg.classList.toggle("is-filtering", hasQuery || !!sel);
 
-    $$(".dimmable, .leaf-node, .flower-node, .flower-bundle, .era-hit, .relate-line, .work-label", svg).forEach((el) => {
-      el.classList.remove("is-match", "is-active", "is-open");
+    $$(".dimmable, .leaf-node, .flower-node, .era-hit", svg).forEach((el) => {
+      el.classList.remove("is-match", "is-active");
     });
 
     function markMatch(el) {
       if (!el) return;
       el.classList.add("is-match");
-      // also mark ancestor dimmable / node
-      const node = el.closest(".leaf-node, .flower-node, .era-hit, .dimmable") || el;
-      node.classList.add("is-match");
     }
 
     if (hasQuery) {
@@ -490,136 +378,63 @@
         markMatch($('[data-kind="person"][data-id="' + p.id + '"]', svg));
         $$('[data-person="' + p.id + '"]', svg).forEach(markMatch);
         $$('[data-id^="' + p.id + '::"]', svg).forEach(markMatch);
-        markMatch($('[data-kind="era"][data-id="' + CSS.escape(p.era) + '"]', svg));
+        $$('[data-kind="era"]', svg).forEach((el) => {
+          if (el.getAttribute("data-id") === p.era) markMatch(el);
+        });
       });
     }
     if (sel) {
+      $$("#treeSvg [data-kind]").forEach((el) => {
+        if (el.getAttribute("data-kind") === sel.kind && el.getAttribute("data-id") === sel.id) {
+          el.classList.add("is-active", "is-match");
+        }
+      });
       if (sel.kind === "person") {
-        const el = $('[data-kind="person"][data-id="' + sel.id + '"]', svg);
-        if (el) { el.classList.add("is-active", "is-match"); }
-        $$('[data-person="' + sel.id + '"], [data-id^="' + sel.id + '::"]', svg).forEach((n) => {
-          n.classList.add("is-match");
-          if (n.classList.contains("flower-bundle")) n.classList.add("is-open");
-        });
+        $$('[data-person="' + sel.id + '"], [data-id^="' + sel.id + '::"]', svg).forEach((n) => n.classList.add("is-match"));
         const p = peopleById[sel.id];
         if (p) {
-          const era = $('[data-kind="era"][data-id="' + CSS.escape(p.era) + '"]', svg);
-          if (era) era.classList.add("is-match");
-          (p.relate || []).forEach(([id]) => {
-            const o = $('[data-kind="person"][data-id="' + id + '"]', svg);
-            if (o) o.classList.add("is-match");
+          $$('[data-kind="era"]', svg).forEach((el) => {
+            if (el.getAttribute("data-id") === p.era) el.classList.add("is-match");
           });
         }
-      } else if (sel.kind === "era") {
-        const el = $('[data-kind="era"][data-id="' + CSS.escape(sel.id) + '"]', svg);
-        if (el) el.classList.add("is-active", "is-match");
-        $$('[data-era="' + CSS.escape(sel.id) + '"]', svg).forEach((n) => n.classList.add("is-match"));
-        PEOPLE.filter((p) => p.era === sel.id).forEach((p) => {
-          const leaf = $('[data-kind="person"][data-id="' + p.id + '"]', svg);
-          if (leaf) leaf.classList.add("is-match");
-          $$('[data-id^="' + p.id + '::"]', svg).forEach((n) => n.classList.add("is-match"));
-        });
       } else if (sel.kind === "work") {
-        const el = $('[data-kind="work"][data-id="' + CSS.escape(sel.id) + '"]', svg);
-        if (el) el.classList.add("is-active", "is-match");
         const pid = sel.id.split("::")[0];
-        const leaf = $('[data-kind="person"][data-id="' + pid + '"]', svg);
-        if (leaf) leaf.classList.add("is-match");
-        const lab = $('[data-work-label="' + CSS.escape(sel.id) + '"]', svg);
-        if (lab) lab.classList.add("is-match");
+        markMatch($('[data-kind="person"][data-id="' + pid + '"]', svg));
+      } else if (sel.kind === "era") {
+        PEOPLE.filter((p) => p.era === sel.id).forEach((p) => {
+          markMatch($('[data-kind="person"][data-id="' + p.id + '"]', svg));
+          $$('[data-person="' + p.id + '"]', svg).forEach(markMatch);
+        });
       }
     }
-    const panel = $("#inspector");
-    if (panel) panel.innerHTML = inspectorHtml();
   }
 
-
-  function railEvents() {
-    const events = [];
-    PEOPLE.forEach((p) => {
-      const span = personSpan(p);
-      events.push({ kind: "era", year: span.mid, id: p.era, title: p.era, sort: span.mid - 0.2, p: null });
-      events.push({ kind: "person", year: span.mid, id: p.id, title: p.name, sub: p.en + " · " + p.year, sort: span.mid, p });
-      (p.works || []).forEach((w, wi) => {
-        const y = workYear(w);
-        if (y == null) return;
-        events.push({ kind: "work", year: y, id: p.id + "::" + wi, title: w[0], sub: w[1] + " · " + p.name, sort: y + 0.2, p, work: w });
-      });
-    });
-    const seenEra = new Set();
-    const uniq = [];
-    events.sort((a, b) => a.sort - b.sort || String(a.id).localeCompare(String(b.id)));
-    events.forEach((e) => {
-      if (e.kind === "era") {
-        if (seenEra.has(e.id)) return;
-        seenEra.add(e.id);
-      }
-      uniq.push(e);
-    });
-    return uniq;
-  }
-
-  function renderMobileRail() {
-    const events = railEvents();
-    const q = search.trim().toLowerCase();
-    const matchIds = new Set(filteredPeople().map((p) => p.id));
-    const hasQuery = !!(q || (filter !== "全部"));
-    return '<p class="rail-dir">手机上按时间列表阅读：<strong>上面更早，下面更晚</strong>。桌面时间树仍自下而上，与草图一致。</p>' +
-      '<ol class="rail-tree" id="railTree">' + events.map((e) => {
-        let relatedId = e.kind === "work" ? e.id.split("::")[0] : (e.kind === "person" ? e.id : null);
-        if (e.kind === "era") {
-          const members = PEOPLE.filter((p) => p.era === e.id);
-          relatedId = members.some((p) => matchIds.has(p.id)) ? "era-match" : null;
-        }
-        const isMatch = !hasQuery || e.kind === "era"
-          ? (e.kind !== "era" ? matchIds.has(relatedId) : PEOPLE.some((p) => p.era === e.id && matchIds.has(p.id)))
-          : matchIds.has(relatedId);
-        const isActive = treeSel && treeSel.kind === e.kind && treeSel.id === e.id;
-        const cls = "rail-item is-" + e.kind + (isActive ? " is-active" : "") + (hasQuery ? (isMatch ? " is-match" : " is-dim") : "");
-        if (e.kind === "era") {
-          return '<li class="' + cls + '"><span class="rail-dot"></span><div class="rail-year">' + Math.round(e.year) + '</div><button type="button" class="rail-card" data-kind="era" data-id="' + esc(e.id) + '"><strong class="rail-title">枝 · ' + esc(e.title) + "</strong></button></li>";
-        }
-        if (e.kind === "person") {
-          return '<li class="' + cls + '"><span class="rail-dot"></span><div class="rail-year">' + Math.round(e.year) + '</div><button type="button" class="rail-card" data-kind="person" data-id="' + esc(e.id) + '"><strong>叶 · ' + esc(e.title) + "</strong><small>" + esc(e.sub) + "</small></button></li>";
-        }
-        return '<li class="' + cls + '"><span class="rail-dot"></span><div class="rail-year">' + e.year + '</div><button type="button" class="rail-card" data-kind="work" data-id="' + esc(e.id) + '"><strong>花 · ' + esc(e.title) + "</strong><small>" + esc(e.sub) + "</small></button></li>";
-      }).join("") + "</ol>";
+  function scrollTreeToYear(year, frac) {
+    const st = $("#treeStage");
+    if (!st || !lastLayout) return;
+    const y = lastLayout.yearToY(year);
+    st.scrollTop = Math.max(0, y - st.clientHeight * (frac == null ? 0.42 : frac));
+    st.scrollLeft = Math.max(0, lastLayout.trunkX - st.clientWidth / 2);
   }
 
   function treePage() {
-    const isMobile = window.innerWidth < 880;
-    const stageW = Math.max(1100, (document.getElementById("main") || document.body).clientWidth - (window.innerWidth >= 1080 ? 320 : 0));
-    const layout = isMobile ? null : layoutTree(stageW, false);
-    const s = stats();
+    const viewW = Math.max(320, (document.getElementById("main") || document.body).clientWidth || window.innerWidth || 1024);
+    const layout = layoutApi().layoutTree(PEOPLE, { viewWidth: viewW });
+    lastLayout = layout;
     return '<div class="tree-page">' +
       '<div class="tree-stage" id="treeStage">' +
-        '<div class="tree-chrome">' +
-          '<div class="kicker">时间主干 · 思潮枝 · 建筑师叶 · 作品花</div>' +
-          "<h1>外国近现代建筑史时间树</h1>" +
-          '<p class="lede">先沿主干看时间，再沿枝看思潮，叶片是建筑师，旁边的花是作品。时间自下而上。悬停或选中花朵可看作品名，并连回它在主干上的年份；时段带可以重叠，不是唯一归属。</p>' +
-          '<div class="toolbar">' +
-            '<div class="legend" aria-hidden="true">' +
-              '<span><i class="lg-trunk"></i>时间主干</span>' +
-              '<span><i class="lg-branch"></i>思潮 / 流派</span>' +
-              '<span><i class="lg-leaf"></i>建筑师</span>' +
-              '<span><i class="lg-flower"></i>作品</span>' +
-            "</div>" +
-            '<div class="row">' +
-              '<button type="button" class="chip' + (showWorks ? " is-active" : "") + '" data-toggle="works">作品花朵</button>' +
-              '<button type="button" class="chip' + (showRelate ? " is-active" : "") + '" data-toggle="relate">横向关联</button>' +
-              '<button type="button" class="chip" data-scroll="roots">到起源</button>' +
-              '<button type="button" class="chip" data-scroll="now">到当代</button>' +
-            "</div>" +
-          "</div>" +
-          '<div class="filterbar" aria-label="时段筛选">' +
-            '<button type="button" class="chip' + (filter === "全部" ? " is-active" : "") + '" data-filter="全部">全部 ' + s.total + "</button>" +
-            '<button type="button" class="chip' + (filter === "本次错题" ? " is-active" : "") + '" data-filter="本次错题">本次 6 题 ' + s.seed + "</button>" +
-            GROUP_ORDER.map((g) => '<button type="button" class="chip' + (filter === g ? " is-active" : "") + '" data-filter="' + esc(g) + '">' + esc(g) + "</button>").join("") +
-          "</div>" +
-        "</div>" +
-        '<div class="tree-canvas" id="treeCanvas">' + (isMobile ? renderMobileRail() : renderTreeSvg(layout)) + "</div>" +
+        '<div class="tree-canvas" id="treeCanvas">' + renderTreeSvg(layout) + "</div>" +
       "</div>" +
-      '<aside class="inspector" id="inspector">' + inspectorHtml() + "</aside>" +
+      '<aside class="node-card" id="nodeCard" hidden role="dialog" aria-label="节点说明"></aside>' +
+      '<button type="button" class="tree-fab" id="treeFab" aria-expanded="false" aria-controls="treeMenu" aria-haspopup="true">目录</button>' +
+      '<div class="tree-menu" id="treeMenu" hidden role="menu">' +
+        '<label class="tree-search"><span class="visually-hidden">检索建筑师、思潮或作品</span>' +
+        '<input id="treeSearch" type="search" placeholder="检索人物、思潮、作品" autocomplete="off" enterkeyhint="search"></label>' +
+        '<button type="button" data-view="cards">人物卡</button>' +
+        '<button type="button" data-view="quiz">闭卷复测</button>' +
+        '<button type="button" data-view="graph">关系索引</button>' +
+        '<button type="button" data-view="progress">复习记录</button>' +
+      "</div>" +
     "</div>";
   }
 
@@ -843,18 +658,21 @@
 
   function syncChrome() {
     const view = current().view;
+    document.body.classList.toggle("is-tree", view === "tree");
     $$(".nav-btn, .mobile-nav button").forEach((btn) => {
       btn.classList.toggle("is-active", btn.getAttribute("data-view") === (view === "person" ? "cards" : view));
     });
-    const input = $("#searchInput");
-    if (input && input.value !== search) input.value = search;
+    ["#searchInput", "#treeSearch"].forEach((sel) => {
+      const input = $(sel);
+      if (input && input.value !== search) input.value = search;
+    });
   }
 
   function render() {
     const main = $("#main");
     const route = current();
     const stage = $("#treeStage");
-    if (stage) treeScroll = stage.scrollTop;
+    if (stage) treeScroll = { top: stage.scrollTop, left: stage.scrollLeft };
     let html;
     if (route.view === "tree") html = treePage();
     else if (route.view === "cards") html = cardsPage();
@@ -868,17 +686,21 @@
     if (route.view === "tree") {
       applyTreeHighlight();
       const st = $("#treeStage");
-      const mobile = window.innerWidth < 880;
       if (st) {
-        if (mobile) {
-          if (treeScroll != null && didInitialTreeScroll) st.scrollTop = treeScroll;
-          else { st.scrollTop = 0; didInitialTreeScroll = true; }
-        } else if (treeScroll != null && didInitialTreeScroll) {
-          st.scrollTop = treeScroll;
+        if (treeScroll != null && didInitialTreeScroll) {
+          st.scrollTop = treeScroll.top;
+          st.scrollLeft = treeScroll.left;
         } else {
-          st.scrollTop = st.scrollHeight - st.clientHeight;
+          scrollTreeToYear(1920, 0.42);
           didInitialTreeScroll = true;
         }
+      }
+      if (treeSel) showNodeCard();
+      if (menuOpen) {
+        const menu = $("#treeMenu");
+        const fab = $("#treeFab");
+        if (menu) menu.hidden = false;
+        if (fab) fab.setAttribute("aria-expanded", "true");
       }
     }
     const draft = $("#quizDraft");
@@ -888,15 +710,18 @@
   }
 
   function selectNode(kind, id, opts) {
-    treeSel = id ? { kind, id } : null;
+    if (!id) {
+      hideNodeCard();
+      return;
+    }
+    treeSel = { kind, id };
     if (current().view !== "tree") return;
     if (opts && opts.openPerson && kind === "person") {
       goPerson(id);
       return;
     }
     applyTreeHighlight();
-    const panel = $("#inspector");
-    if (panel && window.innerWidth < 1080) panel.scrollIntoView({ block: "nearest", behavior: "auto" });
+    showNodeCard();
   }
 
   function treeNodes() {
@@ -904,8 +729,26 @@
   }
 
   document.addEventListener("click", (e) => {
-    const act = e.target.closest("button, [data-card], [data-kind], a.brand");
-    if (!act) return;
+    const act = e.target.closest("button, [data-card], [data-kind], a.brand, .tree-fab");
+    if (!act) {
+      if (current().view === "tree" && !e.target.closest("#nodeCard, #treeMenu")) {
+        hideNodeCard();
+        closeTreeMenu();
+      }
+      return;
+    }
+    if (act.id === "treeFab") {
+      menuOpen = !menuOpen;
+      const menu = $("#treeMenu");
+      if (menu) menu.hidden = !menuOpen;
+      act.setAttribute("aria-expanded", menuOpen ? "true" : "false");
+      if (menuOpen) {
+        const input = $("#treeSearch");
+        if (input) input.focus();
+      }
+      return;
+    }
+    if (act.dataset.closeCard) { hideNodeCard(); return; }
     if (act.id === "exportBtn") { download(); return; }
     if (act.id === "importBtn") { $("#fileImport").click(); return; }
     if (act.id === "resetBtn") {
@@ -917,8 +760,6 @@
       }
       return;
     }
-    if (act.dataset.toggle === "works") { showWorks = !showWorks; render(); return; }
-    if (act.dataset.toggle === "relate") { showRelate = !showRelate; render(); return; }
     if (act.dataset.scroll === "roots") {
       const st = $("#treeStage");
       if (st) st.scrollTop = window.innerWidth < 880 ? 0 : st.scrollHeight;
@@ -949,28 +790,38 @@
   document.addEventListener("keydown", (e) => {
     if (e.key === "/" && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
       e.preventDefault();
-      const input = $("#searchInput");
-      if (input) input.focus();
+      if (current().view === "tree") {
+        menuOpen = true;
+        const menu = $("#treeMenu");
+        const fab = $("#treeFab");
+        if (menu) menu.hidden = false;
+        if (fab) fab.setAttribute("aria-expanded", "true");
+        const input = $("#treeSearch");
+        if (input) input.focus();
+      } else {
+        const input = $("#searchInput");
+        if (input) input.focus();
+      }
       return;
     }
     if (e.key === "Escape") {
-      if (document.activeElement && document.activeElement.id === "searchInput" && search) {
+      const activeId = document.activeElement && document.activeElement.id;
+      if ((activeId === "searchInput" || activeId === "treeSearch") && search) {
         search = "";
-        $("#searchInput").value = "";
+        $$("#searchInput, #treeSearch").forEach((el) => { el.value = ""; });
         if (current().view === "tree") applyTreeHighlight();
         else render();
         return;
       }
-      if (treeSel && current().view === "tree") {
-        treeSel = null;
-        applyTreeHighlight();
+      if (current().view === "tree") {
+        if (treeSel) hideNodeCard();
+        closeTreeMenu();
       }
       return;
     }
     if ((e.key === "Enter" || e.key === " ") && e.target.dataset && e.target.dataset.kind) {
       e.preventDefault();
-      if (e.key === "Enter" && e.target.dataset.kind === "person") goPerson(e.target.dataset.id);
-      else selectNode(e.target.dataset.kind, e.target.dataset.id);
+      selectNode(e.target.dataset.kind, e.target.dataset.id);
       return;
     }
     if ((e.key === "ArrowUp" || e.key === "ArrowDown") && current().view === "tree") {
@@ -988,7 +839,7 @@
   });
 
   document.addEventListener("input", (e) => {
-    if (e.target.id === "searchInput") {
+    if (e.target.id === "searchInput" || e.target.id === "treeSearch") {
       search = e.target.value;
       if (current().view === "tree") applyTreeHighlight();
       else if (current().view === "cards") render();
@@ -1011,6 +862,9 @@
     clearTimeout(resizeT);
     resizeT = setTimeout(render, 150);
   });
+  window.addEventListener("scroll", () => {
+    if (current().view === "tree" && treeSel) positionNodeCard();
+  }, true);
 
   if (!location.hash) location.replace("#tree");
   else render();
