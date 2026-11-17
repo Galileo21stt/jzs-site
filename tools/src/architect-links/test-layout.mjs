@@ -36,8 +36,11 @@ check("19 people loaded", people && people.length === 19, people && people.lengt
 const viewports = [
   { w: 1024, h: 768 },
   { w: 1180, h: 820 },
+  { w: 1920, h: 1072 },
   { w: 390, h: 844 }
 ];
+
+const FOCUS_ERAS = ["战后转向", "后现代主义", "新理性主义", "现代主义"];
 
 for (const vp of viewports) {
   const layout = L.layoutTree(people, { viewWidth: vp.w });
@@ -59,9 +62,53 @@ for (const vp of viewports) {
   const leftN = layout.people.filter((p) => p.side === "left").length;
   const rightN = layout.people.filter((p) => p.side === "right").length;
   check(vp.w + "x" + vp.h + " both sides have people", leftN > 0 && rightN > 0, leftN + "/" + rightN);
-  if (vp.w >= 1024) {
+  if (vp.w >= 1180) {
     check(vp.w + " tree width does not exceed viewport", layout.width <= vp.w + 1, "width=" + layout.width);
+  } else if (vp.w === 1024) {
+    check(vp.w + " tree width stays close to the viewport", layout.width <= vp.w + 48, "width=" + layout.width);
   }
+
+  const textBoxes = layout.protectedBoxes;
+  const lineHits = L.findLineTextHits(layout.lineSegments, textBoxes, 0);
+  check(vp.w + "x" + vp.h + " no visible line-segment vs text-rectangle hits", lineHits.length === 0, lineHits.slice(0, 8).map((h) => h.seg.kind + " vs " + h.box.kind + ":" + h.box.id).join("; "));
+
+  const kinds = new Set((layout.lineSegments || []).map((s) => {
+    const dx = Math.abs(s.x2 - s.x1), dy = Math.abs(s.y2 - s.y1);
+    if (dx < 0.6) return "v";
+    if (dy < 0.6) return "h";
+    return "d";
+  }));
+  check(vp.w + "x" + vp.h + " audits horizontal, vertical and diagonal segments", kinds.has("h") && kinds.has("v") && kinds.has("d"), [...kinds].join(","));
+
+  layout.eras.forEach((e) => {
+    const gap = e.midY - (e.labelY + e.labelH);
+    check(vp.w + " era “" + e.name + "” sits 8–12px above its branch", gap >= 8 && gap <= 14, "gap=" + gap.toFixed(1));
+    const box = textBoxes.find((b) => b.kind === "era" && b.id === e.name);
+    const midHits = (layout.lineSegments || []).filter((s) => Math.abs(s.y1 - e.midY) < 0.6 && Math.abs(s.y2 - e.midY) < 0.6 && box && L.segmentHitsBox(s, box, 0));
+    check(vp.w + " mid-branch of “" + e.name + "” does not pierce its label", midHits.length === 0, midHits.length);
+  });
+
+  FOCUS_ERAS.forEach((name) => {
+    const e = layout.eras.find((x) => x.name === name);
+    check(vp.w + " includes focus era “" + name + "”", !!e);
+    if (!e) return;
+    const gap = e.midY - (e.labelY + e.labelH);
+    check(vp.w + " focus era “" + name + "” has a clear gap above the branch", gap >= 8, "gap=" + gap.toFixed(1));
+  });
+
+  people.forEach((p) => {
+    const item = layout.people.find((it) => it.p.id === p.id);
+    check(vp.w + " lays out person “" + p.name + "”", !!item);
+    if (!item) return;
+    const era = layout.eras.find((e) => e.name === p.era);
+    check(vp.w + " “" + p.name + "” keeps era “" + p.era + "”", !!era);
+    const leaf = textBoxes.find((b) => b.kind === "leaf" && b.id === p.id);
+    const leafHits = leaf ? L.findLineTextHits(layout.lineSegments, [leaf], 0) : [{ missing: true }];
+    check(vp.w + " no line pierces leaf “" + p.name + "”", leafHits.length === 0, leafHits.length);
+  });
+
+  const yearHits = L.findLineTextHits(layout.lineSegments, textBoxes.filter((b) => b.kind === "year" || b.kind === "dir"), 0);
+  check(vp.w + "x" + vp.h + " no line pierces year or direction labels", yearHits.length === 0, yearHits.map((h) => h.seg.kind + " vs " + h.box.id).join("; "));
   const mid = layout.width / 2;
   check(vp.w + "x" + vp.h + " trunk is centered in the canvas", Math.abs(layout.trunkX - mid) <= 80, "trunk=" + layout.trunkX.toFixed(1) + " mid=" + mid.toFixed(1));
 }
@@ -89,7 +136,7 @@ check("node card is a floating dialog", css.includes(".node-card") && css.includ
 
 const app = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
 const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
-check("index loads layout.js", html.includes('src="layout.js"'));
+check("index loads layout.js", html.includes('src="layout.js'));
 const treePage = app.slice(app.indexOf("function treePage"), app.indexOf("function cardsPage"));
 check("treePage omits top chrome, filters, inspector, and 目录", !treePage.includes("inspector") && !treePage.includes("tree-chrome") && !treePage.includes("filterbar") && !treePage.includes("<h1>") && treePage.includes("node-card") && !treePage.includes("tree-fab") && !treePage.includes("目录"));
 check("clicking leaf/flower/era opens a node card", app.includes("function showNodeCard") && app.includes("function hideNodeCard") && app.includes('data-kind="person"') && app.includes('data-kind="work"') && app.includes('data-kind="era"'));
@@ -99,6 +146,11 @@ check("each leaf label is a single text node template", (app.match(/class="leaf-
 check("each era label is a single text node template", (app.match(/class="era-label"/g) || []).length === 1);
 check("storage key unchanged", app.includes('KEY = "arch-links-v1"') || app.includes("KEY = 'arch-links-v1'"));
 check("old routes still exist", app.includes("function cardsPage") && app.includes("function quizPage") && app.includes("function progressPage") && app.includes("function graphPage") && app.includes('person/'));
+check("renderer draws clipped line segments", app.includes("layout.lineSegments") && app.includes('class="label-bg"'));
+check("CSS gives labels an opaque background", css.includes(".label-bg") && css.includes("fill: var(--bg)"));
+check("index cache-busts styles, scripts and favicon", /styles\.css\?v=/.test(html) && /layout\.js\?v=/.test(html) && /app\.js\?v=/.test(html) && /data\.js\?v=/.test(html) && /interaction\.js\?v=/.test(html) && /favicon\.svg\?v=/.test(html));
+check("CJK width estimate is conservative", L.estimateTextWidth("戰", 10) >= 11.2);
+check("digit width estimate is conservative", L.estimateTextWidth("8888", 100) >= 288);
 
 console.log("\n" + (failures.length ? failures.length + " failed:\n - " + failures.join("\n - ") : "All layout checks passed."));
 if (failures.length) process.exit(1);

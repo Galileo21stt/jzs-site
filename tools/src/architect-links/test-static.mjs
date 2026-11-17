@@ -63,7 +63,7 @@ const app = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
 const css = fs.readFileSync(path.join(__dirname, "styles.css"), "utf8");
 const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 check("keeps storage key arch-links-v1", app.includes('KEY = "arch-links-v1"') || app.includes("KEY = 'arch-links-v1'"));
-check("layout module is loaded", html.includes('src="layout.js"') && fs.existsSync(path.join(__dirname, "layout.js")));
+check("layout module is loaded", html.includes('src="layout.js') && fs.existsSync(path.join(__dirname, "layout.js")));
 check("does not draw always-on career twigs", !app.includes("const twigs") && !app.includes('class="twig'));
 check("does not paint a halo stroke on SVG text", !css.includes("stroke-width: 5px") && !css.includes("paint-order: stroke fill") && css.includes("stroke: none !important"));
 check("selected leaf names stay dark", /leaf-node\.is-active \.leaf-label[\s\S]{0,80}fill:\s*var\(--ink\)/.test(css));
@@ -73,7 +73,9 @@ check("tree page uses a node card instead of a docked inspector", app.includes("
 check("flowers keep accessible names", app.includes("aria-label") && app.includes("作品 "));
 check("tree page has no 目录 FAB", !app.includes("tree-fab") && !app.includes("目录") && !css.includes(".tree-fab"));
 check("flower markup no longer carries data-person", !/flower-node[\s\S]{0,200}data-person=/.test(app));
-check("index loads interaction.js", html.includes('src="interaction.js"'));
+check("index loads interaction.js", html.includes('src="interaction.js'));
+check("index cache-busts CSS/JS/favicon with a stable version", /styles\.css\?v=/.test(html) && /layout\.js\?v=/.test(html) && /app\.js\?v=/.test(html) && /interaction\.js\?v=/.test(html) && /data\.js\?v=/.test(html) && /favicon\.svg\?v=/.test(html));
+check("labels have an opaque backdrop, not a text stroke", css.includes(".label-bg") && css.includes("stroke: none !important") && !css.includes("paint-order: stroke fill"));
 
 const workCount = people.reduce((n, p) => n + (p.works || []).length, 0);
 check("at least 30 works remain attached to people", workCount >= 30, workCount);

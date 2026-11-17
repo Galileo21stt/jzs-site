@@ -196,7 +196,7 @@ const css = fs.readFileSync(path.join(__dirname, "styles.css"), "utf8");
 const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 check("styles no longer define a directory FAB", !css.includes(".tree-fab") && !css.includes(".tree-menu"));
 check("index loads interaction.js before app.js",
-  html.indexOf('src="interaction.js"') !== -1 && html.indexOf('src="interaction.js"') < html.indexOf('src="app.js"'));
+  html.indexOf('src="interaction.js') !== -1 && html.indexOf('src="interaction.js') < html.indexOf('src="app.js'));
 
 console.log("\n" + (failures.length ? failures.length + " failed:\n - " + failures.join("\n - ") : "All event path checks passed."));
 if (failures.length) process.exit(1);

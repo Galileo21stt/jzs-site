@@ -210,6 +210,12 @@ h3 { font-size: 16px; margin: 0 0 8px; }
   padding: 0;
 }
 .tree-svg { display: block; width: auto; height: auto; max-width: none; }
+.tree-svg .label-bg {
+  fill: var(--bg);
+  stroke: none;
+  pointer-events: none;
+}
+
 .tree-svg text, .tree-svg tspan {
   stroke: none !important;
   paint-order: normal;
