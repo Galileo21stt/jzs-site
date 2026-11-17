@@ -198,5 +198,21 @@ check("styles no longer define a directory FAB", !css.includes(".tree-fab") && !
 check("index loads interaction.js before app.js",
   html.indexOf('src="interaction.js') !== -1 && html.indexOf('src="interaction.js') < html.indexOf('src="app.js'));
 
+// A shared dialog must not transfer one node's reading position to another.
+const readingCard={hidden:true,innerHTML:"",scrollTop:0,style:{}};
+ctx.document.querySelector=(selector)=>selector==="#nodeCard"?readingCard:null;
+App.selectNode("person","rossi");
+check("unread card starts at top",readingCard.scrollTop===0);
+readingCard.scrollTop=320;readingCard.onscroll();
+App.selectNode("person","graves");
+check("another unread card does not inherit old scroll",readingCard.scrollTop===0);
+readingCard.scrollTop=75;readingCard.onscroll();
+App.selectNode("person","rossi");
+check("returning to a read card restores its own position",readingCard.scrollTop===320);
+App.hideNodeCard();App.selectNode("person","graves");
+check("close and reopen restores that card's position",readingCard.scrollTop===75);
+App.selectNode("era","新理性主义");
+check("unread movement card has independent top position",readingCard.scrollTop===0);
+
 console.log("\n" + (failures.length ? failures.length + " failed:\n - " + failures.join("\n - ") : "All event path checks passed."));
 if (failures.length) process.exit(1);
