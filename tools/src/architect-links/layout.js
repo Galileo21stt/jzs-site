@@ -19,6 +19,10 @@
   var FLOWER_HIT = 16;
   var BOX_GAP = 6;
   var DIR_FONT = 13;
+  var TEXT_PAD_X = 6;
+  var TEXT_PAD_Y = 3;
+  var LABEL_LINE_GAP = 10;
+  var LINE_TEXT_GAP = 4;
 
   function extractYears(str) {
     if (!str && str !== 0) return [];
@@ -72,10 +76,11 @@
     for (var i = 0; i < s.length; i++) {
       var c = s.charCodeAt(i);
       if (c <= 0x1f) continue;
-      if (c === 0x20) w += fontSize * 0.33;
-      else if (c <= 0x7f) w += fontSize * 0.62;
-      else if (c >= 0xff01 && c <= 0xff60) w += fontSize;
-      else w += fontSize * 1.05;
+      if (c === 0x20) w += fontSize * 0.38;
+      else if (c >= 48 && c <= 57) w += fontSize * 0.72;
+      else if (c <= 0x7f) w += fontSize * 0.70;
+      else if (c >= 0xff01 && c <= 0xff60) w += fontSize * 1.05;
+      else w += fontSize * 1.12;
     }
     return w;
   }
@@ -161,6 +166,176 @@
     };
   }
 
+
+  function padBox(b, px, py) {
+    px = px == null ? TEXT_PAD_X : px;
+    py = py == null ? TEXT_PAD_Y : py;
+    return {
+      kind: b.kind, id: b.id, personId: b.personId,
+      x: b.x - px, y: b.y - py, w: b.w + px * 2, h: b.h + py * 2
+    };
+  }
+
+  function expandBox(b, gap) {
+    return { x: b.x - gap, y: b.y - gap, w: b.w + gap * 2, h: b.h + gap * 2, kind: b.kind, id: b.id };
+  }
+
+  function pointInBox(x, y, box, eps) {
+    eps = eps == null ? 0.05 : eps;
+    return x >= box.x - eps && x <= box.x + box.w + eps && y >= box.y - eps && y <= box.y + box.h + eps;
+  }
+
+  function segSegT(ax, ay, bx, by, cx, cy, dx, dy) {
+    var rx = bx - ax, ry = by - ay;
+    var sx = dx - cx, sy = dy - cy;
+    var den = rx * sy - ry * sx;
+    if (Math.abs(den) < 1e-8) return null;
+    var t = ((cx - ax) * sy - (cy - ay) * sx) / den;
+    var u = ((cx - ax) * ry - (cy - ay) * rx) / den;
+    if (t < -1e-6 || t > 1 + 1e-6 || u < -1e-6 || u > 1 + 1e-6) return null;
+    return Math.max(0, Math.min(1, t));
+  }
+
+  function clipSegmentByBox(seg, box) {
+    var x1 = seg.x1, y1 = seg.y1, x2 = seg.x2, y2 = seg.y2;
+    var ts = [0, 1];
+    var edges = [
+      [box.x, box.y, box.x + box.w, box.y],
+      [box.x, box.y + box.h, box.x + box.w, box.y + box.h],
+      [box.x, box.y, box.x, box.y + box.h],
+      [box.x + box.w, box.y, box.x + box.w, box.y + box.h]
+    ];
+    for (var i = 0; i < edges.length; i++) {
+      var e = edges[i];
+      var t = segSegT(x1, y1, x2, y2, e[0], e[1], e[2], e[3]);
+      if (t != null) ts.push(t);
+    }
+    ts.sort(function (a, b) { return a - b; });
+    var uniq = [];
+    ts.forEach(function (t) {
+      if (!uniq.length || Math.abs(uniq[uniq.length - 1] - t) > 1e-5) uniq.push(t);
+    });
+    var pieces = [];
+    for (var j = 0; j < uniq.length - 1; j++) {
+      var t0 = uniq[j], t1 = uniq[j + 1];
+      var mx = x1 + (x2 - x1) * ((t0 + t1) / 2);
+      var my = y1 + (y2 - y1) * ((t0 + t1) / 2);
+      if (pointInBox(mx, my, box, 0.05)) continue;
+      var p = {
+        x1: x1 + (x2 - x1) * t0,
+        y1: y1 + (y2 - y1) * t0,
+        x2: x1 + (x2 - x1) * t1,
+        y2: y1 + (y2 - y1) * t1,
+        kind: seg.kind,
+        era: seg.era,
+        personId: seg.personId
+      };
+      if (Math.hypot(p.x2 - p.x1, p.y2 - p.y1) >= 1.2) pieces.push(p);
+    }
+    return pieces;
+  }
+
+  function clipSegments(segments, boxes, gap) {
+    var out = segments.slice();
+    (boxes || []).forEach(function (box) {
+      var b = gap ? expandBox(box, gap) : box;
+      var next = [];
+      out.forEach(function (seg) {
+        clipSegmentByBox(seg, b).forEach(function (p) { next.push(p); });
+      });
+      out = next;
+    });
+    return out;
+  }
+
+  function segmentHitsBox(seg, box, gap) {
+    var b = gap ? expandBox(box, gap) : box;
+    var dx = seg.x2 - seg.x1, dy = seg.y2 - seg.y1;
+    var len = Math.hypot(dx, dy);
+    if (len < 0.5) return false;
+    var steps = Math.max(4, Math.ceil(len / 2));
+    for (var i = 0; i <= steps; i++) {
+      var t = i / steps;
+      if (pointInBox(seg.x1 + dx * t, seg.y1 + dy * t, b, 0.02)) {
+        // Endpoints that merely graze a leaf edge after clipping should not count
+        // if they sit exactly on the boundary for < 1px; still a hit.
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function findLineTextHits(segments, boxes, gap) {
+    var hits = [];
+    (segments || []).forEach(function (seg) {
+      (boxes || []).forEach(function (box) {
+        if (segmentHitsBox(seg, box, gap)) hits.push({ seg: seg, box: box });
+      });
+    });
+    return hits;
+  }
+
+  function collectProtectedBoxes(layout) {
+    var boxes = [];
+    layout.years.forEach(function (y) {
+      boxes.push(padBox({ kind: "year", id: String(y.year), x: y.labelX, y: y.labelY, w: y.labelW, h: y.labelH }));
+    });
+    if (layout.dirTop) boxes.push(padBox(Object.assign({ kind: "dir", id: "top" }, layout.dirTop)));
+    if (layout.dirBot) boxes.push(padBox(Object.assign({ kind: "dir", id: "bot" }, layout.dirBot)));
+    layout.eras.forEach(function (e) {
+      var x = e.labelAnchor === "end" ? e.labelX - e.labelW : e.labelX;
+      boxes.push(padBox({ kind: "era", id: e.name, x: x, y: e.labelY, w: e.labelW, h: e.labelH }));
+    });
+    layout.people.forEach(function (item) {
+      // The pill already protects the name; no extra typographic pad needed,
+      // but keep a 1px inset so a stem may meet the border.
+      boxes.push({
+        kind: "leaf", id: item.p.id,
+        x: item.x - item.w / 2 + 0.5,
+        y: item.y - item.h / 2 + 0.5,
+        w: item.w - 1,
+        h: item.h - 1
+      });
+    });
+    return boxes;
+  }
+
+  function rawBranchSegments(layout) {
+    var segs = [];
+    var trunkX = layout.trunkX;
+    var yTop = layout.padTop;
+    var yBot = layout.padTop + layout.innerH;
+    segs.push({ x1: trunkX, y1: yTop, x2: trunkX, y2: yBot, kind: "trunk" });
+    layout.years.forEach(function (y) {
+      segs.push({ x1: trunkX - 5, y1: y.tickY, x2: trunkX + 5, y2: y.tickY, kind: "tick" });
+    });
+    layout.eras.forEach(function (e) {
+      segs.push({ x1: trunkX, y1: e.midY, x2: e.stubX, y2: e.midY, kind: "era-stub", era: e.name });
+      segs.push({ x1: e.stubX, y1: e.minY, x2: e.stubX, y2: e.maxY, kind: "era-spine", era: e.name });
+      e.members.forEach(function (p) {
+        var item = layout.people.find(function (it) { return it.p.id === p.id; });
+        if (!item) return;
+        segs.push({ x1: e.stubX, y1: item.y, x2: item.innerX, y2: item.y, kind: "stem", era: e.name, personId: p.id });
+      });
+    });
+    // Root ticks at the base of the trunk
+    segs.push({ x1: trunkX, y1: yBot, x2: trunkX - 18, y2: yBot + 16, kind: "root" });
+    segs.push({ x1: trunkX, y1: yBot, x2: trunkX, y2: yBot + 18, kind: "root" });
+    segs.push({ x1: trunkX, y1: yBot, x2: trunkX + 18, y2: yBot + 16, kind: "root" });
+    return segs;
+  }
+
+  function buildClippedLines(layout) {
+    var protectedBoxes = collectProtectedBoxes(layout);
+    var raw = rawBranchSegments(layout);
+    var clipped = clipSegments(raw, protectedBoxes, LINE_TEXT_GAP);
+    layout.protectedBoxes = protectedBoxes;
+    layout.rawSegments = raw;
+    layout.lineSegments = clipped;
+    layout.lineTextHits = findLineTextHits(clipped, protectedBoxes, 0);
+    return layout;
+  }
+
   function assignEraSides(eras) {
     // Greedy: put each era on the side with less vertical occupancy in its span.
     var load = { left: [], right: [] };
@@ -244,11 +419,13 @@
             ev.labelAnchor = ev.side === "right" ? "start" : "end";
             moved = true;
           } else if (other.kind === "era") {
-            ev.labelY += (ev.midY >= other.y ? 1 : -1) * 12;
+            ev.labelY -= 12;
+            if (ev.labelY + ev.labelH > ev.midY - 8) ev.labelY = ev.midY - 8 - ev.labelH;
             moved = true;
           } else if (other.kind === "leaf" || other.kind === "flower") {
-            ev.labelY += ev.midY >= (other.y + other.h / 2) ? 8 : -8;
+            ev.labelY -= 8;
             ev.labelX += dir * 6;
+            if (ev.labelY + ev.labelH > ev.midY - 8) ev.labelY = ev.midY - 8 - ev.labelH;
             moved = true;
           }
         } else if ((a.kind === "year" || a.kind === "dir") && (b.kind === "year" || b.kind === "dir")) {
@@ -317,6 +494,10 @@
     assignEraSides(eras);
     var eraSide = {};
     eras.forEach(function (e) { eraSide[e.name] = e.side; });
+    var eraCol = ERA_COL;
+    eras.forEach(function (e) {
+      eraCol = Math.max(eraCol, Math.ceil(estimateTextWidth(e.name, ERA_FONT) + TEXT_PAD_X * 2 + 8));
+    });
 
     var peopleLayout = people.map(function (p) {
       var span = personSpan(p);
@@ -362,7 +543,7 @@
     peopleLayout.forEach(function (item) {
       var dir = item.side === "right" ? 1 : -1;
       var ext = item.side === "right" ? rightExt : leftExt;
-      var inner = GUTTER + ERA_COL + LEAF_GAP + (ext.offsets[item.lane] || 0);
+      var inner = GUTTER + eraCol + LEAF_GAP + (ext.offsets[item.lane] || 0);
       item.x = dir * (inner + item.w / 2);
       item.innerX = dir * inner;
       item.outerX = item.x + dir * (item.w / 2);
@@ -399,19 +580,13 @@
       var dir = e.side === "right" ? 1 : -1;
       e.stubX = dir * (GUTTER + 10);
       e.labelW = estimateTextWidth(e.name, ERA_FONT);
-      e.labelH = 20;
+      e.labelH = Math.ceil(ERA_FONT * 1.25);
       e.labelAnchor = e.side === "right" ? "start" : "end";
-      e.labelX = dir * (GUTTER + 16);
-      if (e.side === "left") e.labelX = dir * (GUTTER + 16);
-      e.labelY = e.midY - 6;
-      // Keep label within the branch span
-      var top = e.minY + 2;
-      var bot = e.maxY - e.labelH - 2;
-      if (bot < top) {
-        e.labelY = e.midY - e.labelH / 2;
-      } else {
-        e.labelY = Math.min(Math.max(e.labelY, top), bot);
-      }
+      // Keep 8–12px clear of the vertical spine, plus typographic pad.
+      e.labelX = e.stubX + dir * (LABEL_LINE_GAP + TEXT_PAD_X);
+      // Default: 8–12px clear above the mid-branch (and typical person stem).
+      e.labelY = e.midY - LABEL_LINE_GAP - e.labelH;
+      e.baseline = e.labelY + ERA_FONT * 0.88;
     });
 
     var years = [];
@@ -425,7 +600,7 @@
         tickY: yy,
         labelW: tw,
         labelH: 16,
-        labelX: -8 - tw,
+        labelX: -(8 + LINE_TEXT_GAP + TEXT_PAD_X) - tw,
         labelY: yy - 8,
         y: yy
       });
@@ -440,7 +615,7 @@
     };
     var dirBot = {
       x: 8,
-      y: padTop + innerH + 16,
+      y: padTop + innerH + 28,
       w: estimateTextWidth("更早 · 起源", DIR_FONT) + 8,
       h: 18,
       text: "更早 ↓ 起源"
@@ -521,8 +696,20 @@
     };
 
     var leftover = resolveLabelOverlaps(layout);
+    layout.eras.forEach(function (e) {
+      e.baseline = e.labelY + ERA_FONT * 0.88;
+    });
+    layout.years.forEach(function (y) {
+      y.baseline = y.labelY + YEAR_FONT * 0.88;
+    });
     layout.overlaps = leftover;
     layout.boxes = collectBoxes(layout);
+    buildClippedLines(layout);
+    layout.constants.LABEL_LINE_GAP = LABEL_LINE_GAP;
+    layout.constants.LINE_TEXT_GAP = LINE_TEXT_GAP;
+    layout.constants.TEXT_PAD_X = TEXT_PAD_X;
+    layout.constants.TEXT_PAD_Y = TEXT_PAD_Y;
+    layout.eraCol = eraCol;
     return layout;
   }
 
@@ -542,10 +729,21 @@
     boxesOverlap: boxesOverlap,
     findOverlaps: findOverlaps,
     collectBoxes: collectBoxes,
+    collectProtectedBoxes: collectProtectedBoxes,
+    clipSegments: clipSegments,
+    segmentHitsBox: segmentHitsBox,
+    findLineTextHits: findLineTextHits,
+    rawBranchSegments: rawBranchSegments,
+    buildClippedLines: buildClippedLines,
+    padBox: padBox,
     clampCard: clampCard,
     placeCard: placeCard,
     layoutTree: layoutTree,
-    leafWidth: leafWidth
+    leafWidth: leafWidth,
+    LABEL_LINE_GAP: LABEL_LINE_GAP,
+    LINE_TEXT_GAP: LINE_TEXT_GAP,
+    TEXT_PAD_X: TEXT_PAD_X,
+    TEXT_PAD_Y: TEXT_PAD_Y
   };
 
   root.ArchitectTreeLayout = api;

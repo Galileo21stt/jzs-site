@@ -172,35 +172,42 @@
   }
 
   function renderTreeSvg(layout) {
-    const { width, height, trunkX, padTop, innerH, people, eras, works, years, dirTop, dirBot } = layout;
-    const yTop = padTop;
-    const yBot = padTop + innerH;
-    const byId = Object.fromEntries(people.map((item) => [item.p.id, item]));
+    const { width, height, trunkX, people, eras, works, years, dirTop, dirBot } = layout;
+    const padX = (layout.constants && layout.constants.TEXT_PAD_X) || 6;
+    const padY = (layout.constants && layout.constants.TEXT_PAD_Y) || 3;
+
+    function lineClass(kind) {
+      if (kind === "trunk") return "trunk";
+      if (kind === "root") return "root";
+      if (kind === "tick") return "guide-year";
+      return "branch dimmable";
+    }
+
+    const lines = (layout.lineSegments || []).map((s) =>
+      '<line class="' + lineClass(s.kind) + '" x1="' + s.x1.toFixed(1) + '" y1="' + s.y1.toFixed(1) + '" x2="' + s.x2.toFixed(1) + '" y2="' + s.y2.toFixed(1) + '"/>'
+    ).join("");
+
+    function labelBg(x, y, w, h) {
+      return '<rect class="label-bg" x="' + (x - padX).toFixed(1) + '" y="' + (y - padY).toFixed(1) + '" width="' + (w + padX * 2).toFixed(1) + '" height="' + (h + padY * 2).toFixed(1) + '" rx="2"/>';
+    }
 
     const yearEls = years.map((y) => {
-      return '<line class="guide-year" x1="' + (trunkX - 8) + '" y1="' + y.tickY + '" x2="' + (trunkX + 8) + '" y2="' + y.tickY + '"/>' +
-        '<text class="year' + (y.major ? " major" : "") + '" text-anchor="end" x="' + (y.labelX + y.labelW) + '" y="' + (y.tickY + 4) + '">' + y.year + "</text>";
+      const baseline = y.baseline != null ? y.baseline : (y.labelY + 12);
+      return labelBg(y.labelX, y.labelY, y.labelW, y.labelH) +
+        '<text class="year' + (y.major ? " major" : "") + '" text-anchor="end" x="' + (y.labelX + y.labelW) + '" y="' + baseline.toFixed(1) + '">' + y.year + "</text>";
     }).join("");
 
-    const trunk = '<line class="trunk" x1="' + trunkX + '" y1="' + yTop + '" x2="' + trunkX + '" y2="' + yBot + '"/>' +
-      '<path class="root" d="M' + trunkX + "," + yBot + " l-18,16 M" + trunkX + "," + yBot + " l0,18 M" + trunkX + "," + yBot + ' l18,16"/>';
-
-    const dir = '<text class="year major" x="' + dirTop.x + '" y="' + (dirTop.y + 14) + '">' + esc(dirTop.text) + "</text>" +
+    const dir = labelBg(dirTop.x, dirTop.y, dirTop.w, dirTop.h) +
+      '<text class="year major" x="' + dirTop.x + '" y="' + (dirTop.y + 14) + '">' + esc(dirTop.text) + "</text>" +
+      labelBg(dirBot.x, dirBot.y, dirBot.w, dirBot.h) +
       '<text class="year" x="' + dirBot.x + '" y="' + (dirBot.y + 14) + '">' + esc(dirBot.text) + "</text>";
 
-    const branchEls = eras.map((e) => {
-      const parts = ["M" + trunkX + "," + e.midY + " H" + e.stubX + " M" + e.stubX + "," + e.minY + " V" + e.maxY];
-      e.members.forEach((p) => {
-        const item = byId[p.id];
-        if (!item) return;
-        parts.push("M" + e.stubX + "," + item.y + " H" + item.innerX);
-      });
-      return '<path class="branch dimmable" d="' + parts.join(" ") + '"/>';
-    }).join("");
-
     const eraLabels = eras.map((e) => {
+      const boxX = e.labelAnchor === "end" ? e.labelX - e.labelW : e.labelX;
+      const baseline = e.baseline != null ? e.baseline : (e.labelY + 14);
       return '<g class="era-hit dimmable" tabindex="0" role="button" data-kind="era" data-id="' + esc(e.name) + '" aria-label="思潮 ' + esc(e.name) + '">' +
-        '<text class="era-label" text-anchor="' + e.labelAnchor + '" x="' + e.labelX + '" y="' + (e.labelY + 14) + '">' + esc(e.name) + "</text></g>";
+        labelBg(boxX, e.labelY, e.labelW, e.labelH) +
+        '<text class="era-label" text-anchor="' + e.labelAnchor + '" x="' + e.labelX + '" y="' + baseline.toFixed(1) + '">' + esc(e.name) + "</text></g>";
     }).join("");
 
     const leaves = people.map((item) => {
@@ -219,7 +226,7 @@
     }).join("");
 
     return '<svg id="treeSvg" class="tree-svg" viewBox="0 0 ' + width + " " + height + '" width="' + width + '" height="' + height + '" role="img" aria-label="外国近现代建筑史时间树，时间自下而上">' +
-      yearEls + trunk + dir + branchEls + eraLabels + leaves + flowerEls +
+      lines + yearEls + dir + eraLabels + leaves + flowerEls +
       "</svg>";
   }
 
