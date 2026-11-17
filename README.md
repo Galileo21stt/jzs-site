@@ -44,3 +44,13 @@ GitHub Pages 从 `main` 分支根目录发布。合并到 `main` 后约 1 分钟
 1. 在 Issues 里用模板提「问题反馈」或「改进建议」，写清页面路由、现象、期望。
 2. AI 代理（见 `AGENTS.md`）在 `agent/issue-<编号>` 分支上修改 `tools/src`，运行 `node tools/build.js` 和自检。
 3. 开 PR 关联 issue（`Fixes #编号`），附截图；确认后合并到 `main`，Pages 自动更新。
+
+## 附：外国近现代史时间树
+
+独立复习页，不经过本仓库的 `tools/build.js`，路径：
+
+- 源码：`tools/src/architect-links/`
+- 线上：https://galileo21stt.github.io/jzs-site/tools/src/architect-links/
+- 说明与回滚：见该目录 `README.md`
+
+本页改动合并到 `main` 后，只更新上述路径；不要为此手改根目录的 `index.html`。
