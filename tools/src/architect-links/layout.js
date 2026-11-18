@@ -87,10 +87,9 @@
   }
 
   function layoutTree(people, opts = {}) {
-    const width = Math.max(320, opts.viewWidth || 1024);
-    const single = width < 760;
-    const trunkX = single ? 16 : width / 2;
-    const branchWidth = single ? width - 56 : Math.min(418, width / 2 - 52);
+    const width = Math.max(2000, opts.viewWidth || 1024);
+    const trunkX = width / 2;
+    const branchWidth = 930;
     const bands = [], eras = [];
     let top = 14;
     for (const period of periods.slice().reverse()) {
@@ -100,48 +99,47 @@
         const related = people.filter(p => p.era !== name && (p.affiliations || []).includes(name));
         if (!members.length && !related.length) continue;
         const branch = { name, members, related, width: branchWidth, people: [], works: [] };
-        let y = 72;
-        for (const [index, p] of [...members, ...related].entries()) {
-          if (index === members.length) {
-            branch.relatedY = y;
-            y += 22;
-          }
-          const lines = textLines(p.shortName || p.name, branchWidth - 65, 15);
-          const person = { p, y, lines, height: Math.max(34, lines.length * 21 + 8) };
-          person.works = [];
-          branch.people.push(person);
-          y += person.height;
-          (p.works || []).forEach((work, i) => {
-            if ((p.workTopics?.[i] || p.era) !== name) return;
-            const lines = textLines(work[0], branchWidth - 81, 13);
-            const height = Math.max(30, lines.length * 19 + 10);
+        let y = 8;
+        for (const p of [...members, ...related]) {
+          const name = p.shortName || p.name;
+          const item = { p, lines: textLines(name, 174, 16), works: [], related: p.era !== branch.name };
+          const start = y;
+          for (const [i, work] of (p.works || []).entries()) {
+            if ((p.workTopics?.[i] || p.era) !== branch.name) continue;
+            const lines = textLines(work[0], 228, 14);
+            const height = Math.max(37, lines.length * 19 + 15);
             const row = { id: p.id + "::" + i, personId: p.id, work, y, lines, height };
-            person.works.push(row);
+            item.works.push(row);
             branch.works.push(row);
             y += height;
-          });
-          y += 10;
+          }
+          item.height = Math.max(44, item.lines.length * 20 + 20);
+          y = Math.max(y, start + item.height);
+          item.y = (start + y - item.height) / 2;
+          branch.people.push(item);
+          y += 17;
         }
-        branch.height = y + 8;
+        branch.height = Math.max(92, y + 12);
         branches.push(branch);
       }
       if (!branches.length) continue;
       const band = { id: period.id, title: period.title, y: top, branches };
       bands.push(band);
-      const next = [top + 52, top + 52];
+      const next = [top + 68, top + 119];
       branches.forEach((b, i) => {
-        const lane = single || next[0] <= next[1] ? 0 : 1;
-        b.side = single || lane === 1 ? "right" : "left";
-        b.x = b.side === "right" ? trunkX + 24 : trunkX - 24 - branchWidth;
+        const lane = next[0] <= next[1] ? 0 : 1;
+        b.side = lane === 0 ? "right" : "left";
+        b.x = b.side === "right" ? trunkX + 28 : trunkX - 28 - branchWidth;
         b.y = next[lane];
         // Offset paired forks slightly so each movement has its own junction.
-        b.forkY = b.y + (i % 2 ? 41 : 29);
-        next[lane] += b.height + 20;
+        b.forkY = b.y + b.height * .43;
+        b.offset = 48 + (i % 3) * 14;
+        next[lane] += b.height + 46;
         eras.push(b);
       });
       top = Math.max(...next) + 20;
     }
-    return { width, height: top + 62, trunkX, bands, eras, single };
+    return { width, height: top + 62, trunkX, bands, eras, narrow: opts.viewWidth < 760 };
   }
 
   const api = { layoutTree, clampCard, placeCard, estimateTextWidth, boxesOverlap };

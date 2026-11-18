@@ -462,3 +462,29 @@ h3 { font-size: 16px; margin: 0 0 8px; }
   .tree-tools { align-self: stretch; width: auto; max-width: none; margin: 0; border-radius: 0; border-width: 0 0 1px; padding: 5px 10px; }
   .tree-tools strong { width: auto; font-size: 13px; color: var(--ink); }
 }
+
+/* A continuous drawing surface, with ink weight marking the reading hierarchy. */
+.tree-stage {
+  background: #fcfcfa radial-gradient(circle, #cdd2cc 0.65px, transparent 0.9px) 0 0 / 20px 20px;
+  cursor: grab; scrollbar-width: thin; scrollbar-color: #c6cbc4 transparent;
+}
+.tree-stage.is-dragging, .tree-stage.is-dragging * { cursor: grabbing; user-select: none; }
+.tree-svg .trunk { stroke: #8c998e; stroke-width: 2.4; }
+.tree-svg .board-line { fill: none; stroke: var(--branch-color); stroke-linecap: round; pointer-events: none; }
+.board-line.bough { stroke-width: 2.5; }
+.board-line.twig, .board-line.affiliation { stroke-width: 1.5; stroke-opacity: .72; }
+.board-line.affiliation { stroke-dasharray: 4 5; }
+.board-line.stem { stroke-width: 1; stroke-opacity: .62; }
+.board-dot { fill: #fcfcfa; stroke: var(--branch-color); stroke-width: 1.8; }
+.tree-svg .era-hit .era-label, .tree-svg .era-label tspan {
+  font: 650 23px "Songti SC","Noto Serif CJK SC","Source Han Serif SC",serif; fill: var(--branch-color);
+}
+.tree-svg .leaf-label tspan { font-size: 16px; font-weight: 600; fill: #26342d; }
+.tree-svg .piece-title tspan { font-size: 14px; fill: #414e46; }
+.tree-svg .topic-date tspan { font-size: 11px; fill: #606d62; }
+.tree-svg .period-paper { fill: #fcfcfa; }
+.tree-svg .period-name { fill: #4b584e; font: 600 17px "Songti SC",serif; }
+.tree-svg .era-hit:is(:focus-visible,:hover,.is-active) .node-hit { fill: var(--branch-color); fill-opacity: .08; }
+.tree-tools { border-radius: 14px; box-shadow: 0 3px 14px #323f3010; }
+.tree-page,.tree-guide { background: #fcfcfa; }
+@media(max-width:759px){.tree-tools{border-radius:0}}

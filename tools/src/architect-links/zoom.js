@@ -14,6 +14,39 @@
       stage.scrollLeft=world.x*scale-at.x;stage.scrollTop=world.y*scale-at.y;
     }
     function metrics(t){return {distance:Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY),mid:point((t[0].clientX+t[1].clientX)/2,(t[0].clientY+t[1].clientY)/2)};}
+    let drag = null;
+    stage.addEventListener('pointerdown', e => {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      drag = {x:e.clientX, y:e.clientY, left:stage.scrollLeft, top:stage.scrollTop, moved:false};
+    });
+    stage.addEventListener('pointermove', e => {
+      if (!drag || e.pointerType !== 'mouse') return;
+      if (!(e.buttons & 1)) { finishDrag(); return; }
+      const dx = e.clientX-drag.x, dy = e.clientY-drag.y;
+      if (!drag.moved) {
+        if (Math.hypot(dx,dy) < 5) return;
+        drag.moved = true;
+        stage.setPointerCapture(e.pointerId);
+        stage.classList.add('is-dragging');
+        options.onStart();
+      }
+      stage.scrollLeft = drag.left-dx;
+      stage.scrollTop = drag.top-dy;
+    });
+    function finishDrag() {
+      if (drag?.moved) suppressUntil = Date.now()+180;
+      drag = null;
+      stage.classList.remove('is-dragging');
+    }
+    stage.addEventListener('pointerup', finishDrag);
+    stage.addEventListener('pointercancel', finishDrag);
+    stage.addEventListener('lostpointercapture', finishDrag);
+    stage.addEventListener('wheel', e => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      options.onStart();
+      change(scale*Math.exp(-e.deltaY*.009), point(e.clientX,e.clientY));
+    }, {passive:false});
     stage.addEventListener('touchstart',e=>{
       if(e.touches.length!==2)return;
       const m=metrics(e.touches); options.onStart();
