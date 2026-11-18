@@ -47,9 +47,9 @@ for (const width of [320, 390, 759, 760, ...viewports.map(v => v.w)]) {
   check(width + " renders all defined movements exactly once", new Set(names).size === names.length &&
     Object.keys(ctx.MOVEMENTS).every(name => names.includes(name)));
   check(width + " groups into five time regions", layout.bands.length === 5);
-  check(width + " fits the screen at normal zoom", layout.width === width &&
-    layout.eras.every(b => b.x >= 0 && b.x + b.width <= width));
-  check(width + " uses the responsive branch arrangement", new Set(layout.eras.map(b => b.side)).size === (width < 760 ? 1 : 2));
+  check(width + " allows horizontal exploration within the board", layout.width >= Math.max(2000,width) &&
+    layout.eras.every(b => b.x >= 0 && b.x + b.width <= layout.width));
+  check(width + " uses the responsive branch arrangement", new Set(layout.eras.map(b => b.side)).size === 2);
   const rows = layout.eras.flatMap(b => b.people.filter(row => row.p.era === b.name));
   check(width + " retains every primary person once", rows.length === people.length &&
     new Set(rows.map(r => r.p.id)).size === people.length);
@@ -63,10 +63,11 @@ for (const width of [320, 390, 759, 760, ...viewports.map(v => v.w)]) {
     layout.eras.slice(i + 1).every(b => !L.boxesOverlap(
       {x:a.x,y:a.y,w:a.width,h:a.height},{x:b.x,y:b.y,w:b.width,h:b.height},8))));
   check(width + " names and work titles stay within each branch", layout.eras.every(b => {
-    const items = [...b.people, ...b.works].sort((a,c) => a.y - c.y);
-    return items.every((item,i) => item.y + item.height <= b.height &&
-      (!i || item.y >= items[i-1].y + items[i-1].height) &&
-      item.lines.every(line => L.estimateTextWidth(line, item.p ? 15 : 13) <= b.width - (item.p ? 65 : 81)));
+    return b.people.every(p => p.y >= 0 && p.y + p.height <= b.height &&
+      p.lines.every(line => L.estimateTextWidth(line,16) <= 174) &&
+      p.works.every((w,i) => w.y >= 0 && w.y+w.height <= b.height &&
+        w.lines.every(line=>L.estimateTextWidth(line,14)<=228) &&
+        (!i || p.works[i-1].y+p.works[i-1].height<=w.y)));
   }));
   check(width + " includes secondary-only movements", layout.eras.some(b =>
     b.name === "对理性主义的充实与提高" && b.related.some(p => p.id === "gropius")));

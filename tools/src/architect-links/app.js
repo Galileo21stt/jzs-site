@@ -162,7 +162,7 @@
   }
 
   let lastLayout = null;
-  let treeZoom = 1, zoomControl = null;
+  let treeZoom = window.innerWidth < 760 ? .72 : .9, zoomControl = null;
 
   function layoutApi() {
     return window.ArchitectTreeLayout;
@@ -189,40 +189,56 @@
         '" aria-label="' + esc(name) + '" class="' + cls + ' dimmable">' + content + '</g>';
     }
     const branchEls = eras.map(b => {
-      const edge = b.side === "right" ? b.x : b.x + b.width;
-      const fork = '<path class="topic-fork dimmable" data-era="' + esc(b.name) + '" d="M ' + trunkX + ' ' +
-        (b.forkY + 9) + ' Q ' + trunkX + ' ' + b.forkY + ' ' + edge + ' ' + b.forkY + '"/>';
+      const d = b.side === "right" ? 1 : -1;
+      const x = distance => trunkX + d * distance;
+      const anchor = d > 0 ? "start" : "end";
+      const head = b.offset;
+      const titleWidth = Math.max(120, layoutApi().estimateTextWidth(b.name, 23) + 10);
+      const hub = head + titleWidth;
+      const y = b.forkY;
+      function path(a, ay, z, zy, cls) {
+        const mid = (a + z) / 2;
+        return '<path class="board-line dimmable ' + cls + '" data-era="' + esc(b.name) +
+          '" d="M ' + x(a) + ' ' + ay + ' C ' + x(mid) + ' ' + ay + ' ' + x(mid) + ' ' + zy + ' ' + x(z) + ' ' + zy + '"/>';
+      }
+      function dot(at, cy, r) {
+        return '<circle class="board-dot" cx="' + x(at) + '" cy="' + cy + '" r="' + r + '"/>';
+      }
+      function hit(start, end, top, height) {
+        return '<rect class="node-hit" x="' + Math.min(x(start), x(end)) + '" y="' + top +
+          '" width="' + (end-start) + '" height="' + height + '" rx="6"/>';
+      }
+      const date = MOVEMENTS[b.name].period.split(/[；，]/)[0].replace(/(\d{4})s/g, "$1年代");
       const header = action(b.name, "era", b.name, "思潮 " + b.name, "era-hit",
-        '<rect class="topic-head" width="' + b.width + '" height="59" rx="11"/>' +
-        '<text class="era-label" x="17" y="27">' + esc(b.name) + '</text>' +
-        '<text class="topic-date" x="17" y="48">' + esc(MOVEMENTS[b.name].period.split(/[；，]/)[0].replace(/(\d{4})s/g, "$1年代")) + '</text>');
-      const railEnd = b.people.length ? b.people[b.people.length - 1].y + 16 : b.relatedY + 8;
-      const rail = '<path class="topic-link" d="M 16 59 V ' + railEnd + '"/>';
-      const leaves = b.people.map(item => {
-        const p = item.p, y = item.y;
-        const shape = '<path class="topic-link" d="M 16 ' + (y + 16) + ' h 13"/>' +
-          '<path class="leaf-symbol" d="M 27 ' + (y + 17) + ' q 0 -9 11 -10 q 0 10 -11 10 Z"/>';
-        const leaf = action(b.name, "person", p.id, "人物 " + p.name, "leaf-node",
-          '<rect class="node-hit" x="23" y="' + y + '" width="' + (b.width - 32) + '" height="' + item.height + '"/>' +
-          shape + textRows(item.lines, 46, y + 21, 21, "leaf-label"));
-        const flowers = item.works.map(w => action(b.name, "work", w.id, "作品 " + w.work[0] + " " + w.work[1], "flower-node",
-          '<rect class="node-hit" x="38" y="' + w.y + '" width="' + (b.width - 48) + '" height="' + w.height + '"/>' +
-          '<g transform="translate(49 ' + (w.y + 14) + ') scale(.52)">' + flowerMark(0, 0) + '</g>' +
-          textRows(w.lines, 65, w.y + 19, 19, "piece-title"))).join("");
-        return leaf + flowers;
+        hit(head-10, hub, y-39, 65) + dot(head, y, 4) +
+        textRows([b.name], x(head+3), y-12, 0, "era-label") + textRows([date], x(head+3), y+19, 0, "topic-date"));
+      let lines = path(0, y+34, head, y, "bough") + path(head, y, hub, y, "bough");
+      const nodes = b.people.map((item, i) => {
+        const p = item.p;
+        const py = b.y + item.y + item.height - 12;
+        const twig = hub + 67 + (i % 3) * 14;
+        const textWidth = Math.max(...item.lines.map(line => layoutApi().estimateTextWidth(line,16)));
+        const end = twig + textWidth + 16;
+        lines += path(hub, y, twig, py, item.related ? "affiliation" : "twig") + path(twig, py, end, py, "twig");
+        const person = action(b.name, "person", p.id, "人物 " + p.name, "leaf-node",
+          hit(twig-8, end, py-item.lines.length*20-8, item.lines.length*20+18) +
+          dot(twig, py, 3) + textRows(item.lines, x(twig+6), py-8-(item.lines.length-1)*20, 20, "leaf-label"));
+        const flowers = item.works.map(w => {
+          const wy = b.y + w.y + w.height/2;
+          const tip = end + 47;
+          lines += path(end, py, tip, wy, "stem");
+          return action(b.name, "work", w.id, "作品 " + w.work[0] + " " + w.work[1], "flower-node",
+            hit(tip-8, tip+244, wy-w.height/2, w.height) +
+            '<g transform="translate(' + x(tip) + ' ' + wy + ') scale(.48)">' + flowerMark(0,0) + '</g>' +
+            textRows(w.lines, x(tip+13), wy+5-(w.lines.length-1)*9.5, 19, "piece-title"));
+        }).join("");
+        return person + flowers;
       }).join("");
-      const related = b.related.length ? '<text class="also-label" x="26" y="' + (b.relatedY + 14) +
-        '">跨专题关联</text>' : "";
-      return '<g style="--branch-color:' + palette[b.name] + '">' + fork +
-        '<g transform="translate(' + b.x + ' ' + b.y + ')"><rect class="topic-paper dimmable" data-era="' + esc(b.name) +
-        '" width="' + b.width + '" height="' + b.height + '" rx="12"/>' + rail + header + leaves + related + '</g></g>';
+      return '<g text-anchor="' + anchor + '" style="--branch-color:' + palette[b.name] + '">' + lines + header + nodes + '</g>';
     }).join("");
-    const headings = bands.map(b => {
-      const x = layout.single ? trunkX + 8 : trunkX;
-      return '<g transform="translate(' + x + ' ' + (b.y + 21) + ')"><rect class="period-paper" x="' +
-        (layout.single ? -8 : -119) + '" y="-20" width="238" height="37" rx="18"/><text class="period-name" x="' +
-        (layout.single ? 6 : 0) + '" y="5" text-anchor="' + (layout.single ? "start" : "middle") + '">' + esc(b.title) + '</text></g>';
-    }).join("");
+    const headings = bands.map(b =>
+      '<g transform="translate(' + trunkX + ' ' + (b.y + 24) +  ')"><rect class="period-paper" x="' + (layout.narrow ? -3 : -112) + '" y="-18" width="224" height="36"/>' +
+      '<text class="period-name" x="' + (layout.narrow ? 5 : 0) + '" y="6" text-anchor="' + (layout.narrow ? "start" : "middle") + '">' + esc(b.title) + '</text></g>').join("");
     return '<svg id="treeSvg" class="tree-svg" viewBox="0 0 ' + width + ' ' + height + '" width="' + width +
       '" height="' + height + '" role="group" aria-label="建筑史思潮专题树，时间自下而上"><line class="trunk" x1="' +
       trunkX + '" x2="' + trunkX + '" y1="35" y2="' + (height - 58) + '"/>' + branchEls + headings + '</svg>';
@@ -401,8 +417,11 @@
     if (!stage || !lastLayout) return;
     const band = lastLayout.bands.find(b => b.id === id) || lastLayout.bands[0];
     if (!band) return;
-    stage.scrollTop = Math.max(0, band.y * treeZoom - 12);
-    stage.scrollLeft = Math.max(0, lastLayout.trunkX * treeZoom - stage.clientWidth / 2);
+    const first = band.branches[0];
+    const narrow = stage.clientWidth < 760;
+    const dx = narrow ? (first.side === "right" ? 1 : -1) * 235 : 0;
+    stage.scrollTop = Math.max(0, band.y * treeZoom - 22);
+    stage.scrollLeft = Math.max(0, (lastLayout.trunkX + dx) * treeZoom - stage.clientWidth / 2);
   }
 
   function treePage() {
@@ -412,7 +431,7 @@
     lastLayout = layout;
     return '<div class="tree-page">' +
       '<div class="tree-tools"><strong>建筑史思潮树</strong><button type="button" data-view="movements">流派</button><button type="button" data-view="cards">查人物·作品</button><button type="button" data-view="drill">练关系</button><label><span class="visually-hidden">时间树范围</span><select id="treeGroup">' + ['全部'].concat(GROUP_ORDER).map(g=>'<option'+(g===treeGroup?' selected':'')+'>'+esc(g)+'</option>').join('')+'</select></label><label><span class="visually-hidden">跳到时期</span><select id="yearJump"><option value="">跳到时期</option>'+layout.bands.slice().reverse().map(b=>'<option value="'+b.id+'">'+esc(b.title)+'</option>').join('')+'</select></label></div>' +
-      '<div class="tree-guide">时期自下而上，可相互重叠。点思潮看主张，点人物或作品查年代。</div>' +
+      '<div class="tree-guide">拖动画布 · 双指缩放　｜　实线为主线，虚线为跨专题关联</div>' +
       '<div class="tree-stage" id="treeStage">' +
         '<div class="tree-canvas" id="treeCanvas">' + renderTreeSvg(layout) + "</div>" +
       "</div>" +
