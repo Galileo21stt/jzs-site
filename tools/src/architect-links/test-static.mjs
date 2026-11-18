@@ -58,6 +58,8 @@ check("red house reverse question credits Webb", questions.find(q=>q.id==='work:
 check("Schinkel example distinguishes Greek revival", questions.find(q=>q.id==='example:schinkel').answer.includes('希腊复兴'));
 check("Gropius example credits TAC", questions.find(q=>q.id==='example:gropius').answer.includes('TAC'));
 
+check("Glass House and AT&T have different movement cues", questions.find(q=>q.id==='work:johnson:0').answer.includes('；现代主义。') && questions.find(q=>q.id==='work:johnson:1').answer.includes('；后现代主义。'));
+check("postmodern practice uses Johnson’s later work", questions.find(q=>q.id==='person:johnson').answer.includes('AT&T'));
 const app = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
 const css = fs.readFileSync(path.join(__dirname, "styles.css"), "utf8");
 const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");

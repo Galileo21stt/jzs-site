@@ -425,3 +425,40 @@ h3 { font-size: 16px; margin: 0 0 8px; }
 .tree-svg .leaf-bg { stroke:var(--branch-color);stroke-width:1.7; }
 .tree-svg .leaf-era { font-size:11px;fill:var(--branch-color); }
 .tree-svg.is-filtering .branch.is-match { stroke-width:3.2; }
+
+/* Group a movement's people and works on one branch. */
+.tree-page {
+  display: flex; flex-direction: column; height: 100dvh; min-height: 0;
+  overflow: hidden; background: #f6f5ef;
+}
+.tree-tools {
+  position: relative; inset: auto; z-index: 20; flex: none; align-self: center;
+  margin: 8px 0; padding: 4px 8px; border-color: #d3d7cc;
+  box-shadow: 0 2px 8px #303b3010;
+}
+.tree-stage { flex: 1; min-height: 0; height: auto; background: #f6f5ef; }
+.tree-guide { position: static; order: 3; flex: none; max-width: none; padding: 5px 12px; text-align: center; background: #f6f5ef; }
+.zoom-tools { bottom: calc(34px + env(safe-area-inset-bottom)); }
+.tree-svg .trunk { stroke: #817f70; stroke-width: 2; }
+.tree-svg .topic-fork { fill: none; stroke: var(--branch-color); stroke-width: 3; }
+.tree-svg .topic-paper { fill: #fffefa; stroke: var(--branch-color); stroke-opacity: .48; stroke-width: 1.1; }
+.tree-svg .topic-head { fill: var(--branch-color); }
+.tree-svg .era-hit .era-label { fill: white; font-size: 18px; font-weight: 650; }
+.tree-svg .topic-date { fill: #fff; opacity: .92; font-size: 12px; }
+.tree-svg .topic-link { fill: none; stroke: var(--branch-color); stroke-opacity: .52; stroke-width: 1.4; }
+.tree-svg .node-hit { fill: transparent; }
+.tree-svg .leaf-symbol { fill: var(--branch-color); }
+.tree-svg .leaf-label { font-size: 15px; font-weight: 650; }
+.tree-svg .piece-title { font-size: 13px; fill: #444c47; }
+.tree-svg .also-label { font-size: 12px; fill: var(--branch-color); font-weight: 650; }
+.tree-svg .flower-petals { stroke: var(--branch-color); }
+.tree-svg .flower-core { fill: var(--branch-color); }
+.tree-svg .period-paper { fill: #e4e7da; }
+.tree-svg .period-name { font-size: 16px; font-weight: 650; fill: #384639; }
+.tree-svg .leaf-node:is(:hover,:focus-visible,.is-active) .node-hit,
+.tree-svg .flower-node:is(:hover,:focus-visible,.is-active) .node-hit { fill: var(--branch-color); fill-opacity: .1; }
+.tree-svg .era-hit:is(:focus-visible,:hover) .topic-head { stroke: #172620; stroke-width: 2; }
+@media (max-width: 759px) {
+  .tree-tools { align-self: stretch; width: auto; max-width: none; margin: 0; border-radius: 0; border-width: 0 0 1px; padding: 5px 10px; }
+  .tree-tools strong { width: auto; font-size: 13px; color: var(--ink); }
+}

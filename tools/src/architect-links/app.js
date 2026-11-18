@@ -177,63 +177,55 @@
   }
 
   function renderTreeSvg(layout) {
-    const { width, height, trunkX, people, eras, works, years, dirTop, dirBot } = layout;
-    const eraColors=Object.fromEntries(Object.keys(MOVEMENTS).map((name,i)=>[name,"hsl("+((i*137.508)%360).toFixed(1)+", 62%, 32%)"]));
-    const padX = (layout.constants && layout.constants.TEXT_PAD_X) || 6;
-    const padY = (layout.constants && layout.constants.TEXT_PAD_Y) || 3;
-
-    function lineClass(kind) {
-      if (kind === "trunk") return "trunk";
-      if (kind === "root") return "root";
-      if (kind === "tick") return "guide-year";
-      return "branch dimmable";
+    const { width, height, trunkX, eras, bands } = layout;
+    const colors = ["#24675a", "#805335", "#425f89", "#756084", "#7d464d", "#58672e"];
+    const palette = Object.fromEntries(Object.keys(MOVEMENTS).map((name, i) => [name, colors[i % colors.length]]));
+    function textRows(lines, x, y, step, cls) {
+      return '<text class="' + cls + '" x="' + x + '" y="' + y + '">' +
+        lines.map((line, i) => '<tspan x="' + x + '" dy="' + (i ? step : 0) + '">' + esc(line) + '</tspan>').join('') + '</text>';
     }
-
-    const lines = (layout.lineSegments || []).map((s) =>
-      '<line data-era="'+esc(s.era || '')+'" style="--branch-color:'+esc(eraColors[s.era] || '#141414')+'" class="' + lineClass(s.kind) + '" x1="' + s.x1.toFixed(1) + '" y1="' + s.y1.toFixed(1) + '" x2="' + s.x2.toFixed(1) + '" y2="' + s.y2.toFixed(1) + '"/>'
-    ).join("");
-
-    function labelBg(x, y, w, h) {
-      return '<rect class="label-bg" x="' + (x - padX).toFixed(1) + '" y="' + (y - padY).toFixed(1) + '" width="' + (w + padX * 2).toFixed(1) + '" height="' + (h + padY * 2).toFixed(1) + '" rx="2"/>';
+    function action(topic, kind, id, name, cls, content) {
+      return '<g tabindex="0" role="button" data-topic="' + esc(topic) + '" ' + (kind === "work" ? 'data-owner="' + esc(id.split("::")[0]) + '" ' : '') + 'data-kind="' + kind + '" data-id="' + esc(id) +
+        '" aria-label="' + esc(name) + '" class="' + cls + ' dimmable">' + content + '</g>';
     }
-
-    const yearEls = years.map((y) => {
-      const baseline = y.baseline != null ? y.baseline : (y.labelY + 12);
-      return labelBg(y.labelX, y.labelY, y.labelW, y.labelH) +
-        '<text class="year' + (y.major ? " major" : "") + '" text-anchor="end" x="' + (y.labelX + y.labelW) + '" y="' + baseline.toFixed(1) + '">' + y.year + "</text>";
+    const branchEls = eras.map(b => {
+      const edge = b.side === "right" ? b.x : b.x + b.width;
+      const fork = '<path class="topic-fork dimmable" data-era="' + esc(b.name) + '" d="M ' + trunkX + ' ' +
+        (b.forkY + 9) + ' Q ' + trunkX + ' ' + b.forkY + ' ' + edge + ' ' + b.forkY + '"/>';
+      const header = action(b.name, "era", b.name, "思潮 " + b.name, "era-hit",
+        '<rect class="topic-head" width="' + b.width + '" height="59" rx="11"/>' +
+        '<text class="era-label" x="17" y="27">' + esc(b.name) + '</text>' +
+        '<text class="topic-date" x="17" y="48">' + esc(MOVEMENTS[b.name].period.split(/[；，]/)[0].replace(/(\d{4})s/g, "$1年代")) + '</text>');
+      const railEnd = b.people.length ? b.people[b.people.length - 1].y + 16 : b.relatedY + 8;
+      const rail = '<path class="topic-link" d="M 16 59 V ' + railEnd + '"/>';
+      const leaves = b.people.map(item => {
+        const p = item.p, y = item.y;
+        const shape = '<path class="topic-link" d="M 16 ' + (y + 16) + ' h 13"/>' +
+          '<path class="leaf-symbol" d="M 27 ' + (y + 17) + ' q 0 -9 11 -10 q 0 10 -11 10 Z"/>';
+        const leaf = action(b.name, "person", p.id, "人物 " + p.name, "leaf-node",
+          '<rect class="node-hit" x="23" y="' + y + '" width="' + (b.width - 32) + '" height="' + item.height + '"/>' +
+          shape + textRows(item.lines, 46, y + 21, 21, "leaf-label"));
+        const flowers = item.works.map(w => action(b.name, "work", w.id, "作品 " + w.work[0] + " " + w.work[1], "flower-node",
+          '<rect class="node-hit" x="38" y="' + w.y + '" width="' + (b.width - 48) + '" height="' + w.height + '"/>' +
+          '<g transform="translate(49 ' + (w.y + 14) + ') scale(.52)">' + flowerMark(0, 0) + '</g>' +
+          textRows(w.lines, 65, w.y + 19, 19, "piece-title"))).join("");
+        return leaf + flowers;
+      }).join("");
+      const related = b.related.length ? '<text class="also-label" x="26" y="' + (b.relatedY + 14) +
+        '">跨专题关联</text>' : "";
+      return '<g style="--branch-color:' + palette[b.name] + '">' + fork +
+        '<g transform="translate(' + b.x + ' ' + b.y + ')"><rect class="topic-paper dimmable" data-era="' + esc(b.name) +
+        '" width="' + b.width + '" height="' + b.height + '" rx="12"/>' + rail + header + leaves + related + '</g></g>';
     }).join("");
-
-    const dir = labelBg(dirTop.x, dirTop.y, dirTop.w, dirTop.h) +
-      '<text class="year major" x="' + dirTop.x + '" y="' + (dirTop.y + 14) + '">' + esc(dirTop.text) + "</text>" +
-      labelBg(dirBot.x, dirBot.y, dirBot.w, dirBot.h) +
-      '<text class="year" x="' + dirBot.x + '" y="' + (dirBot.y + 14) + '">' + esc(dirBot.text) + "</text>";
-
-    const eraLabels = eras.map((e) => {
-      const boxX = e.labelAnchor === "end" ? e.labelX - e.labelW : e.labelX;
-      const baseline = e.baseline != null ? e.baseline : (e.labelY + 14);
-      return '<g style="--branch-color:'+esc(eraColors[e.name])+'" class="era-hit dimmable" tabindex="0" role="button" data-kind="era" data-id="' + esc(e.name) + '" aria-label="思潮 ' + esc(e.name) + '">' +
-        labelBg(boxX, e.labelY, e.labelW, e.labelH) +
-        '<text class="era-label" text-anchor="' + e.labelAnchor + '" x="' + e.labelX + '" y="' + baseline.toFixed(1) + '">' + esc(e.name) + "</text></g>";
+    const headings = bands.map(b => {
+      const x = layout.single ? trunkX + 8 : trunkX;
+      return '<g transform="translate(' + x + ' ' + (b.y + 21) + ')"><rect class="period-paper" x="' +
+        (layout.single ? -8 : -119) + '" y="-20" width="238" height="37" rx="18"/><text class="period-name" x="' +
+        (layout.single ? 6 : 0) + '" y="5" text-anchor="' + (layout.single ? "start" : "middle") + '">' + esc(b.title) + '</text></g>';
     }).join("");
-
-    const leaves = people.map((item) => {
-      const x = item.x - item.w / 2;
-      const y = item.y - item.h / 2;
-      return '<g style="--branch-color:'+esc(eraColors[item.p.era])+'" class="leaf-node dimmable" tabindex="0" role="button" data-kind="person" data-id="' + esc(item.p.id) + '" aria-label="人物 ' + esc(item.p.name) + '">' +
-        '<rect class="leaf-bg" x="' + x + '" y="' + y + '" width="' + item.w + '" height="' + item.h + '" rx="8"/>' +
-        '<text class="leaf-label" text-anchor="middle" x="' + item.x + '" y="' + (item.y - 3) + '">' + esc(item.p.shortName || item.p.name) + '</text><text class="leaf-era" text-anchor="middle" x="' + item.x + '" y="' + (item.y + 16) + '">' + esc(item.p.era) + "</text></g>";
-    }).join("");
-
-    const flowerEls = works.map((w) => {
-      return '<g class="flower-node dimmable" tabindex="0" role="button" data-kind="work" data-id="' + esc(w.id) + '" data-owner="' + esc(w.personId) + '" aria-label="作品 ' + esc(w.work[0]) + " " + esc(w.work[1]) + '">' +
-        '<circle class="flower-hit" cx="' + w.x + '" cy="' + w.y + '" r="' + w.hitR + '"/>' +
-        flowerMark(w.x, w.y) +
-        "</g>";
-    }).join("");
-
-    return '<svg id="treeSvg" class="tree-svg" viewBox="0 0 ' + width + " " + height + '" width="' + width + '" height="' + height + '" role="img" aria-label="外国近现代建筑史时间树，时间自下而上">' +
-      lines + yearEls + dir + eraLabels + leaves + flowerEls +
-      "</svg>";
+    return '<svg id="treeSvg" class="tree-svg" viewBox="0 0 ' + width + ' ' + height + '" width="' + width +
+      '" height="' + height + '" role="group" aria-label="建筑史思潮专题树，时间自下而上"><line class="trunk" x1="' +
+      trunkX + '" x2="' + trunkX + '" y1="35" y2="' + (height - 58) + '"/>' + branchEls + headings + '</svg>';
   }
 
   function movementMembers(name) {
@@ -259,7 +251,7 @@
     return '<div class="kicker">花 · 作品</div><h2>' + esc(w[0]) + "</h2>" +
       '<div class="english">' + esc(w[1]) + "</div>" +
       "<p>" + esc(w[2]) + "</p>" +
-      '<p class="muted">关联人物：' + esc(p.name) + " · " + esc(p.era) + "</p>" +
+      '<p class="muted">关联人物：' + esc(p.name) + " · " + esc(p.workTopics?.[wi] || p.era) + "</p>" +
       '<p class="faint">' + esc(p.sourceRef || "首版学习卡；教材页码待定位") + "</p>" +
       '<div class="actions">' +
         '<button type="button" class="action-btn" data-kind="person" data-id="' + esc(p.id) + '">' + esc(p.name) + "</button>" +
@@ -315,10 +307,9 @@
     if (!card || card.hidden || !treeSel || !api) return;
     const kind = treeSel.kind;
     const id = treeSel.id;
-    let node = null;
-    $$("#treeSvg [data-kind]").forEach((el) => {
-      if (el.getAttribute("data-kind") === kind && el.getAttribute("data-id") === id) node = el;
-    });
+    const candidates = $$("#treeSvg [data-kind]").filter(el => el.dataset.kind === kind && el.dataset.id === id);
+    const topic = treeSel.topic || (kind === "person" && peopleById[id]?.era);
+    const node = candidates.find(el => el.dataset.topic === topic) || candidates[0];
     if (!node) return;
     node.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
     const nr = node.getBoundingClientRect();
@@ -392,50 +383,36 @@
       });
     }
     if (sel) {
-      const selectedPerson=sel.kind==="person"?peopleById[sel.id]:sel.kind==="work"?peopleById[sel.id.split("::")[0]]:null;
-      const selectedEra=sel.kind==="era"?sel.id:selectedPerson && selectedPerson.era;
-      $$("#treeSvg [data-era]").forEach(el=>{if(el.getAttribute("data-era")===selectedEra)markMatch(el);});
-      $$("#treeSvg [data-kind]").forEach((el) => {
-        if (el.getAttribute("data-kind") === sel.kind && el.getAttribute("data-id") === sel.id) {
-          el.classList.add("is-active", "is-match");
-        }
+      const [pid, wi] = sel.id.split("::");
+      const person = peopleById[pid];
+      const topic = sel.topic || (sel.kind === "era" ? sel.id : person?.workTopics?.[wi] || person?.era);
+      $$("#treeSvg [data-era]").filter(el => el.dataset.era === topic).forEach(markMatch);
+      $$("#treeSvg [data-kind]").forEach(el => {
+        const {kind, id, owner} = el.dataset;
+        if (el.dataset.topic !== topic) return;
+        if (sel.kind === "era" || kind === "era" || id === pid || (sel.kind === "person" && owner === pid)) markMatch(el);
+        if (kind === sel.kind && id === sel.id) el.classList.add("is-active", "is-match");
       });
-      if (sel.kind === "person") {
-        $$('[data-owner="' + sel.id + '"], [data-id^="' + sel.id + '::"]', svg).forEach((n) => n.classList.add("is-match"));
-        const p = peopleById[sel.id];
-        if (p) {
-          $$('[data-kind="era"]', svg).forEach((el) => {
-            if (el.getAttribute("data-id") === p.era) el.classList.add("is-match");
-          });
-        }
-      } else if (sel.kind === "work") {
-        const pid = sel.id.split("::")[0];
-        markMatch($('[data-kind="person"][data-id="' + pid + '"]', svg));
-      } else if (sel.kind === "era") {
-        PEOPLE.filter((p) => p.era === sel.id).forEach((p) => {
-          markMatch($('[data-kind="person"][data-id="' + p.id + '"]', svg));
-          $$('[data-owner="' + p.id + '"]', svg).forEach(markMatch);
-        });
-      }
     }
   }
 
-  function scrollTreeToYear(year, frac) {
-    const st = $("#treeStage");
-    if (!st || !lastLayout) return;
-    const y = lastLayout.yearToY(year) * treeZoom;
-    st.scrollTop = Math.max(0, y - st.clientHeight * (frac == null ? 0.42 : frac));
-    st.scrollLeft = Math.max(0, lastLayout.trunkX * treeZoom - st.clientWidth / 2);
+  function scrollToPeriod(id) {
+    const stage = $("#treeStage");
+    if (!stage || !lastLayout) return;
+    const band = lastLayout.bands.find(b => b.id === id) || lastLayout.bands[0];
+    if (!band) return;
+    stage.scrollTop = Math.max(0, band.y * treeZoom - 12);
+    stage.scrollLeft = Math.max(0, lastLayout.trunkX * treeZoom - stage.clientWidth / 2);
   }
 
   function treePage() {
     const viewW = Math.max(320, (document.getElementById("main") || document.body).clientWidth || window.innerWidth || 1024);
     const treePeople = treeGroup === "全部" ? PEOPLE : PEOPLE.filter(p=>p.group===treeGroup);
-    const layout = layoutApi().layoutTree(treePeople, { viewWidth: viewW, pxPerYear: 24 });
+    const layout = layoutApi().layoutTree(treePeople, { viewWidth: viewW });
     lastLayout = layout;
     return '<div class="tree-page">' +
-      '<div class="tree-tools"><strong>建筑史时间树</strong><button type="button" data-view="movements">流派</button><button type="button" data-view="cards">查人物·作品</button><button type="button" data-view="drill">练关系</button><label><span class="visually-hidden">时间树范围</span><select id="treeGroup">' + ['全部'].concat(GROUP_ORDER).map(g=>'<option'+(g===treeGroup?' selected':'')+'>'+esc(g)+'</option>').join('')+'</select></label><label><span class="visually-hidden">跳到年代</span><select id="yearJump"><option value="">跳到年代</option>'+[1780,1830,1870,1900,1920,1950,1980,2000].map(y=>'<option>'+y+'</option>').join('')+'</select></label></div>' +
-      '<div class="tree-guide">时间自下而上 · 枝：思潮 · 叶：人物 · 花：作品<br>人物按所列活动及作品区间定位；花随人物排列，点开查看精确年代。同色枝线与人物属于同一主线；点思潮突出整枝。单指滑动，双指缩放。</div>' +
+      '<div class="tree-tools"><strong>建筑史思潮树</strong><button type="button" data-view="movements">流派</button><button type="button" data-view="cards">查人物·作品</button><button type="button" data-view="drill">练关系</button><label><span class="visually-hidden">时间树范围</span><select id="treeGroup">' + ['全部'].concat(GROUP_ORDER).map(g=>'<option'+(g===treeGroup?' selected':'')+'>'+esc(g)+'</option>').join('')+'</select></label><label><span class="visually-hidden">跳到时期</span><select id="yearJump"><option value="">跳到时期</option>'+layout.bands.slice().reverse().map(b=>'<option value="'+b.id+'">'+esc(b.title)+'</option>').join('')+'</select></label></div>' +
+      '<div class="tree-guide">时期自下而上，可相互重叠。点思潮看主张，点人物或作品查年代。</div>' +
       '<div class="tree-stage" id="treeStage">' +
         '<div class="tree-canvas" id="treeCanvas">' + renderTreeSvg(layout) + "</div>" +
       "</div>" +
@@ -596,7 +573,7 @@
   function movementsPage() {
     const q=search.trim().toLowerCase();
     const entries=Object.entries(MOVEMENTS).filter(([name,m])=>[name,m.period,m.background,m.claim,m.boundary,...movementMembers(name).map(p=>p.name)].join(' ').toLowerCase().includes(q));
-    return '<div class="page"><div class="kicker">时间 · 思想 · 人物 · 作品</div><h1>先认清每根枝，再联系叶与花。</h1><p class="lede">流派会并行、交叉，也会在同一个人身上转变。这里的时间是大致活跃范围；关联不等于师承，思想相近也不等于同一流派。</p><div class="study-summary"><strong>'+Object.keys(MOVEMENTS).length+' 条思想线索</strong><span>'+PEOPLE.length+' 组人物</span><span>'+PEOPLE.reduce((n,p)=>n+p.works.length,0)+' 项作品与著作</span><button class="linkish" data-view="drill">闭卷练关系 →</button></div><div class="movement-grid">'+entries.map(([name,m])=>'<details class="movement-card"><summary><span>'+esc(m.period)+'</span><strong>'+esc(name)+'</strong><small>'+movementMembers(name).map(p=>esc(p.name)).join(' · ')+'</small></summary><div class="movement-body">'+movementBody(name)+'<div class="group-chain">'+movementMembers(name).map(p=>'<button type="button" class="mini-node" data-person="'+p.id+'">'+esc(p.name)+'</button>').join('')+'</div>'+(PEOPLE.some(p=>p.era===name)?'<div class="actions"><button class="action-btn" data-branch="'+esc(name)+'">回时间树看这根枝</button></div>':'')+'</div></details>').join('')+'</div>'+(entries.length?'':'<p class="empty">没有匹配的流派；试试人物名或关键词。</p>')+'</div>';
+    return '<div class="page"><div class="kicker">时间 · 思想 · 人物 · 作品</div><h1>先认清每根枝，再联系叶与花。</h1><p class="lede">流派会并行、交叉，也会在同一个人身上转变。这里的时间是大致活跃范围；关联不等于师承，思想相近也不等于同一流派。</p><div class="study-summary"><strong>'+Object.keys(MOVEMENTS).length+' 条思想线索</strong><span>'+PEOPLE.length+' 组人物</span><span>'+PEOPLE.reduce((n,p)=>n+p.works.length,0)+' 项作品与著作</span><button class="linkish" data-view="drill">闭卷练关系 →</button></div><div class="movement-grid">'+entries.map(([name,m])=>'<details class="movement-card"><summary><span>'+esc(m.period)+'</span><strong>'+esc(name)+'</strong><small>'+movementMembers(name).map(p=>esc(p.name)).join(' · ')+'</small></summary><div class="movement-body">'+movementBody(name)+'<div class="group-chain">'+movementMembers(name).map(p=>'<button type="button" class="mini-node" data-person="'+p.id+'">'+esc(p.name)+'</button>').join('')+'</div>'+(movementMembers(name).length?'<div class="actions"><button class="action-btn" data-branch="'+esc(name)+'">回时间树看这根枝</button></div>':'')+'</div></details>').join('')+'</div>'+(entries.length?'':'<p class="empty">没有匹配的流派；试试人物名或关键词。</p>')+'</div>';
   }
 
   function makeDrill() {
@@ -740,7 +717,7 @@
           st.scrollTop = treeScroll.top;
           st.scrollLeft = treeScroll.left;
         } else {
-          scrollTreeToYear(1920, 0.42);
+          scrollToPeriod("reform");
           didInitialTreeScroll = true;
         }
       }
@@ -757,7 +734,7 @@
       hideNodeCard();
       return;
     }
-    treeSel = { kind, id };
+    treeSel = { kind, id, topic: opts?.topic };
     if (current().view !== "tree") return;
     if (opts && opts.openPerson && kind === "person") {
       goPerson(id);
@@ -800,7 +777,7 @@
     if (intent && intent.type === "select") {
       if (e && typeof e.preventDefault === "function") e.preventDefault();
       if (e && typeof e.stopPropagation === "function") e.stopPropagation();
-      selectNode(intent.kind, intent.id);
+      selectNode(intent.kind, intent.id, {topic: act.dataset?.topic});
       return;
     }
     if (act.dataset.locate && peopleById[act.dataset.locate]) {
@@ -810,7 +787,7 @@
       const name=act.dataset.branch;
       treeGroup="全部"; treeSel={kind:"era",id:name}; setView("tree");
       const era=lastLayout && lastLayout.eras.find(x=>x.name===name);
-      if(era) { $("#treeStage").scrollTop=Math.max(0,era.midY-window.innerHeight/2); showNodeCard(); }
+      if(era) { $("#treeStage").scrollTop=Math.max(0,era.y*treeZoom-12); showNodeCard(); }
       return;
     }
     if (act.dataset.drillMode) { drillMode=act.dataset.drillMode; drillQueue=[]; setView("drill"); return; }
@@ -851,7 +828,7 @@
     }
     if ((e.key === "Enter" || e.key === " ") && e.target.dataset && e.target.dataset.kind) {
       e.preventDefault();
-      selectNode(e.target.dataset.kind, e.target.dataset.id);
+      selectNode(e.target.dataset.kind, e.target.dataset.id, {topic: e.target.dataset.topic});
       return;
     }
     if ((e.key === "ArrowUp" || e.key === "ArrowDown") && current().view === "tree") {
@@ -864,7 +841,7 @@
       else idx = e.key === "ArrowUp" ? Math.max(0, idx - 1) : Math.min(nodes.length - 1, idx + 1);
       e.preventDefault();
       nodes[idx].focus();
-      selectNode("person", nodes[idx].dataset.id);
+      selectNode("person", nodes[idx].dataset.id, {topic: nodes[idx].dataset.topic});
     }
   });
 
@@ -882,7 +859,7 @@
   });
   document.addEventListener("change", (e) => {
     if (e.target.id === "treeGroup") { treeGroup=e.target.value; treeSel=null; treeScroll=null; didInitialTreeScroll=false; render(); }
-    if (e.target.id === "yearJump" && e.target.value) { hideNodeCard(); scrollTreeToYear(+e.target.value); }
+    if (e.target.id === "yearJump" && e.target.value) { hideNodeCard(); scrollToPeriod(e.target.value); e.target.value=""; }
     if (e.target.id === "fileImport") importData(e.target.files && e.target.files[0]);
   });
   window.addEventListener("hashchange", () => {
