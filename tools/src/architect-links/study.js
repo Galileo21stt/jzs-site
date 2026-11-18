@@ -14,9 +14,10 @@
     ];
     examples.forEach(([id,prompt,answer])=>{if(by[id])out.push({id:'example:'+id,type:'example',title:'按所附题型改编',prompt,answer,trap:by[id].trap,personId:id,sourceRef:by[id].sourceRef});});
     people.forEach((p) => {
-      out.push({id:'person:'+p.id, type:'person', title:'人物 → 思潮与作品', prompt:p.name+'：说出其思想或流派线索，再举一部作品说明。', answer:p.era+'；'+p.idea+' 例：'+p.works[0][0]+'（'+p.works[0][1]+'），'+p.works[0][2]+'。', trap:p.trap, personId:p.id, sourceRef:p.sourceRef || '沿用首版学习卡；教材页码待定位'});
-      out.push({id:'idea:'+p.id, type:'idea', title:'思想 → 人物', prompt:'哪位人物可用于说明这一立场？请同时举一部作品。\n'+p.idea, answer:p.name+'；'+p.era+'。例：'+p.works[0][0]+'（'+p.works[0][1]+'）。这是开放式自拟题，合理的其他例证也可成立。', trap:p.trap, personId:p.id, sourceRef:p.sourceRef || '沿用首版学习卡；教材页码待定位'});
-      p.works.forEach((w,i) => out.push({id:'work:'+p.id+':'+i, type:'work', title:'作品／著作 → 作者、时间与思想', prompt:w[0].replace(/（(?:由|与).*?）/g,'')+'：作者是谁？约在何时？用哪个思想关键词解释？', answer:((p.workCredits||{})[i]||p.name)+'；'+w[1]+'；'+p.era+'。'+w[2]+'。', trap:p.trap, personId:p.id, sourceRef:p.sourceRef || '沿用首版学习卡；教材页码待定位'}));
+      const example = p.works.find((w, i) => (p.workTopics?.[i] || p.era) === p.era) || p.works[0];
+      out.push({id:'person:'+p.id, type:'person', title:'人物 → 思潮与作品', prompt:p.name+'：说出其思想或流派线索，再举一部作品说明。', answer:p.era+'；'+p.idea+' 例：'+example[0]+'（'+example[1]+'），'+example[2]+'。', trap:p.trap, personId:p.id, sourceRef:p.sourceRef || '沿用首版学习卡；教材页码待定位'});
+      out.push({id:'idea:'+p.id, type:'idea', title:'思想 → 人物', prompt:'哪位人物可用于说明这一立场？请同时举一部作品。\n'+p.idea, answer:p.name+'；'+p.era+'。例：'+example[0]+'（'+example[1]+'）。这是开放式自拟题，合理的其他例证也可成立。', trap:p.trap, personId:p.id, sourceRef:p.sourceRef || '沿用首版学习卡；教材页码待定位'});
+      p.works.forEach((w,i) => out.push({id:'work:'+p.id+':'+i, type:'work', title:'作品／著作 → 作者、时间与思想', prompt:w[0].replace(/（(?:由|与).*?）/g,'')+'：作者是谁？约在何时？用哪个思想关键词解释？', answer:((p.workCredits||{})[i]||p.name)+'；'+w[1]+'；'+(p.workTopics?.[i] || p.era)+'。'+w[2]+'。', trap:p.trap, personId:p.id, sourceRef:p.sourceRef || '沿用首版学习卡；教材页码待定位'}));
     });
     // Only use works with a single exact four-digit date: ranges and proposals are not ordered as completions.
     const dated = people.filter(p=>p.sourceRef).flatMap(p=>p.works.filter(w=>/^\d{4}$/.test(w[1])).map(w=>({name:w[0],year:+w[1],personId:p.id,sourceRef:p.sourceRef})));

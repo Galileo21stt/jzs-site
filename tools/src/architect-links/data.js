@@ -235,6 +235,7 @@ window.PEOPLE = [
   },
   {
     "id": "gropius",
+    "workTopics": {"2":"包豪斯","3":"对理性主义的充实与提高"},
     "name": "瓦尔特·格罗皮乌斯",
     "en": "Walter Gropius",
     "era": "早期现代主义",
@@ -2265,6 +2266,7 @@ window.PEOPLE = [
   },
   {
     "id": "johnson",
+    "workTopics": {"0":"现代主义"},
     "name": "菲利普·约翰逊",
     "en": "Philip Johnson",
     "era": "后现代主义",
